@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">JARVIS</string>
+    <string name="notification_channel_standby">JARVIS standby</string>
+    <string name="notification_channel_actions">JARVIS actions</string>
+</resources>
