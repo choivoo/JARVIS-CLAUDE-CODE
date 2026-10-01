@@ -1,7 +1,10 @@
 package com.jarvis.assistant
 
 import android.app.Application
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -47,6 +50,12 @@ class UiSmokeTest {
     @get:Rule
     val compose = createComposeRule()
 
+    @org.junit.Before
+    fun manualClock() {
+        // The core animates forever, so the test clock must be driven by hand.
+        compose.mainClock.autoAdvance = false
+    }
+
     private val messages = listOf(
         MessageEntity(2, 1, Role.JARVIS, "Certainly. I'll open YouTube.", "물론입니다. 유튜브를 엽니다.", null, 2),
         MessageEntity(1, 1, Role.USER, "유튜브 열어줘", null, null, 1),
@@ -55,30 +64,31 @@ class UiSmokeTest {
     @Test
     fun homeScreenRendersEveryPhaseAndTheme() {
         val level = mutableFloatStateOf(0.6f)
-        var phase = AssistantPhase.IDLE
-        for (theme in ThemeMode.values()) {
+        var phase by mutableStateOf(AssistantPhase.IDLE)
+        var theme by mutableStateOf(ThemeMode.AMOLED)
+        compose.setContent {
+            JarvisTheme(theme) {
+                HomeScreen(
+                    hud = HudState(
+                        phase = phase,
+                        standby = true,
+                        subtitle = "물론입니다. 유튜브를 엽니다.",
+                        notice = if (phase == AssistantPhase.ERROR) "마이크 권한이 필요합니다." else null,
+                        partial = if (phase == AssistantPhase.LISTENING) "유튜브 열" else "",
+                    ),
+                    level = level,
+                    messages = messages,
+                    micGranted = true,
+                    onRequestMic = {}, onMic = {}, onToggleStandby = {}, onSubmitText = {},
+                    onOpenSettings = {}, onOpenHistory = {},
+                )
+            }
+        }
+        for (t in ThemeMode.values()) {
             for (p in AssistantPhase.values()) {
+                theme = t
                 phase = p
-                compose.setContent {
-                    JarvisTheme(theme) {
-                        HomeScreen(
-                            hud = HudState(
-                                phase = phase,
-                                standby = true,
-                                subtitle = "물론입니다. 유튜브를 엽니다.",
-                                notice = if (phase == AssistantPhase.ERROR) "마이크 권한이 필요합니다." else null,
-                                partial = if (phase == AssistantPhase.LISTENING) "유튜브 열" else "",
-                            ),
-                            level = level,
-                            messages = messages,
-                            micGranted = true,
-                            onRequestMic = {}, onMic = {}, onToggleStandby = {}, onSubmitText = {},
-                            onOpenSettings = {}, onOpenHistory = {},
-                        )
-                    }
-                }
                 compose.mainClock.advanceTimeBy(700)
-                compose.waitForIdle()
             }
         }
         compose.onNodeWithText("J.A.R.V.I.S").assertIsDisplayed()
@@ -112,6 +122,7 @@ class UiSmokeTest {
             }
         }
         compose.onNodeWithText("SPEAK").performClick()
+        compose.mainClock.advanceTimeBy(200)
         assertEquals(1, taps)
     }
 
@@ -120,7 +131,6 @@ class UiSmokeTest {
         var done = false
         compose.setContent { JarvisTheme(ThemeMode.AMOLED) { BootScreen(onFinished = { done = true }) } }
         compose.mainClock.advanceTimeBy(6_000)
-        compose.waitForIdle()
         assertEquals(true, done)
         compose.onNodeWithText("JARVIS READY").assertIsDisplayed()
     }

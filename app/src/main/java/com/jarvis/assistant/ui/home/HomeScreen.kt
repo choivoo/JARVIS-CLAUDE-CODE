@@ -300,15 +300,19 @@ private fun LabeledButton(
     onClick: () -> Unit,
 ) {
     val colors = hudColors()
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(CircleShape)
+            .semantics { contentDescription = description }
+            .clickable(onClick = onClick),
+    ) {
         Box(
             modifier = Modifier
                 .size(size)
                 .clip(CircleShape)
                 .background(accent.copy(alpha = if (active) 0.24f else 0.08f))
-                .border(1.5.dp, accent.copy(alpha = if (active) 1f else 0.5f), CircleShape)
-                .semantics { contentDescription = description }
-                .clickable(onClick = onClick),
+                .border(1.5.dp, accent.copy(alpha = if (active) 1f else 0.5f), CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             Icon(icon, contentDescription = null, tint = if (active) accent else colors.text, modifier = Modifier.size(size * 0.44f))
