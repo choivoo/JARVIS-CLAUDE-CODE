@@ -1,4 +1,4 @@
-# JARVIS V1.0 — Android voice assistant
+# JARVIS V1.1 — Android voice assistant
 
 Korean voice in → AI → calm English voice out, with Korean subtitles on a black futuristic HUD.
 
@@ -9,6 +9,20 @@ Korean voice in → AI → calm English voice out, with Korean subtitles on a bl
 * Kotlin · Jetpack Compose · Room · OkHttp · coroutines · Gradle Kotlin DSL
 * `minSdk 29` (Android 10) · `compileSdk/targetSdk 35`
 * No Google Play Services, no proprietary SDKs
+
+## What's new in 1.1
+
+* **Better wake word** – fuzzy matching of mis-hearings (Jervis, 자비스, 저비스, 차비스 …), three sensitivity levels,
+  English added to the Korean recognizer, shorter listening windows, haptic tick on wake.
+* **Air gestures** – wave over the phone (proximity sensor, works with the screen off while JARVIS is active;
+  single / double wave) and camera hand swipes (left / right / up / down, only on the JARVIS screen, with a
+  visible "GESTURE CAM" label, nothing is recorded). Every gesture can be mapped to an action in Settings.
+* **New commands** – timer, call / text a contact (opens the dialer / composer, you press send), navigation and map
+  search, calendar event, camera, copy / share text, private voice **notes**, Wi-Fi / Bluetooth / display … settings.
+* **Convenience** – quick-action chips on the HUD, Quick Settings tile and launcher shortcut ("Talk to JARVIS"),
+  notes screen, configurable form of address ("Sir", "Ma'am", your name).
+* **Updates install over v1.0** – same application ID and the same fixed signing key (`keystore/jarvis.keystore`),
+  `versionCode` 2. Conversation history and settings are migrated, not reset.
 
 ## Build
 

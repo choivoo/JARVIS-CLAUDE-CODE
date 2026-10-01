@@ -10,6 +10,8 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -29,6 +31,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Mic
@@ -82,6 +85,8 @@ fun HomeScreen(
     onSubmitText: (String) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenHistory: () -> Unit,
+    onOpenNotes: () -> Unit = {},
+    cameraGestureActive: Boolean = false,
 ) {
     val colors = hudColors()
     val accent by animateColorAsState(hud.phase.accent(colors.isLight), tween(450), label = "homeAccent")
@@ -97,7 +102,7 @@ fun HomeScreen(
                 .imePadding()
                 .padding(horizontal = 18.dp, vertical = 10.dp),
         ) {
-            TopBar(hud, accent, onOpenSettings, onOpenHistory)
+            TopBar(hud, accent, cameraGestureActive, onOpenSettings, onOpenHistory, onOpenNotes)
 
             BoxWithConstraints(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -124,6 +129,8 @@ fun HomeScreen(
                 messages.take(2).reversed().forEach { MessageCard(it) }
             }
 
+            QuickChips(accent, onSubmitText)
+
             AnimatedVisibility(
                 visible = showInput,
                 enter = fadeIn() + slideInVertically { it / 2 },
@@ -147,8 +154,50 @@ fun HomeScreen(
     }
 }
 
+private val QUICK_ACTIONS = listOf(
+    "TIME" to "지금 시간 알려줘",
+    "WEATHER" to "오늘 날씨 알려줘",
+    "BATTERY" to "내 배터리 얼마나 남았어?",
+    "TORCH" to "손전등 켜줘",
+    "MUSIC" to "음악 재생해줘",
+    "NOTES" to "메모 읽어줘",
+    "WI-FI" to "와이파이 설정 열어줘",
+)
+
+/** One-tap shortcuts for the most common commands (same pipeline as speech). */
 @Composable
-private fun TopBar(hud: HudState, accent: Color, onOpenSettings: () -> Unit, onOpenHistory: () -> Unit) {
+private fun QuickChips(accent: Color, onRun: (String) -> Unit) {
+    val colors = hudColors()
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        QUICK_ACTIONS.forEach { (label, command) ->
+            Text(
+                label,
+                color = colors.accentSoft,
+                fontSize = 10.sp,
+                letterSpacing = 2.sp,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .border(1.dp, accent.copy(alpha = 0.45f), CircleShape)
+                    .clickable { onRun(command) }
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun TopBar(
+    hud: HudState,
+    accent: Color,
+    cameraGestureActive: Boolean,
+    onOpenSettings: () -> Unit,
+    onOpenHistory: () -> Unit,
+    onOpenNotes: () -> Unit,
+) {
     val colors = hudColors()
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
@@ -160,12 +209,15 @@ private fun TopBar(hud: HudState, accent: Color, onOpenSettings: () -> Unit, onO
                 letterSpacing = 6.sp,
             )
             Text(
-                if (hud.standby) "AI CORE v1.0 · STANDBY" else "AI CORE v1.0",
+                "AI CORE v1.1" + (if (hud.standby) " · STANDBY" else "") + (if (cameraGestureActive) " · GESTURE CAM" else ""),
                 color = if (hud.standby) accent else colors.textDim,
                 fontSize = 10.sp,
                 fontFamily = FontFamily.Monospace,
                 letterSpacing = 2.sp,
             )
+        }
+        IconButton(onClick = onOpenNotes) {
+            Icon(Icons.Filled.EditNote, contentDescription = "Notes", tint = colors.textDim)
         }
         IconButton(onClick = onOpenHistory) {
             Icon(Icons.Filled.History, contentDescription = "Memory log", tint = colors.textDim)

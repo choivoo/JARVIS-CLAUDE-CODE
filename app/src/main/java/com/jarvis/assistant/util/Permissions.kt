@@ -21,5 +21,9 @@ object Perms {
         granted(context, Manifest.permission.ACCESS_COARSE_LOCATION) ||
             granted(context, Manifest.permission.ACCESS_FINE_LOCATION)
 
+    fun hasContacts(context: Context) = granted(context, Manifest.permission.READ_CONTACTS)
+
+    fun hasCamera(context: Context) = granted(context, Manifest.permission.CAMERA)
+
     fun canOverlay(context: Context) = Settings.canDrawOverlays(context)
 }

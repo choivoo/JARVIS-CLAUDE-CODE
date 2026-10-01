@@ -32,6 +32,7 @@ import com.jarvis.assistant.data.model.AppSettings
 import com.jarvis.assistant.service.JarvisForegroundService
 import com.jarvis.assistant.ui.boot.BootScreen
 import com.jarvis.assistant.ui.conversation.ConversationScreen
+import com.jarvis.assistant.ui.conversation.NotesScreen
 import com.jarvis.assistant.ui.home.HomeScreen
 import com.jarvis.assistant.ui.settings.PermissionActions
 import com.jarvis.assistant.ui.settings.PermissionStatus
@@ -45,6 +46,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val container = applicationContext.container
+        if (savedInstanceState == null) handleIntent(intent)
         setContent {
             val settings by container.settings.settings.collectAsState()
             JarvisTheme(settings.theme) {
@@ -52,9 +54,36 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    /** Quick Settings tile / launcher shortcut: start listening immediately. */
+    private fun handleIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_LISTEN, false) == true) {
+            intent.removeExtra(EXTRA_LISTEN)
+            if (Perms.hasMic(this)) applicationContext.container.controller.listenNow()
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        applicationContext.container.gestures.acquire()
+    }
+
+    override fun onStop() {
+        applicationContext.container.gestures.release()
+        super.onStop()
+    }
+
+    companion object {
+        const val EXTRA_LISTEN = "com.jarvis.assistant.extra.LISTEN"
+    }
 }
 
-private enum class Screen { HOME, SETTINGS, HISTORY }
+private enum class Screen { HOME, SETTINGS, HISTORY, NOTES }
 
 @Composable
 private fun JarvisRoot(container: AppContainer, settings: AppSettings) {
@@ -83,6 +112,8 @@ private fun JarvisRoot(container: AppContainer, settings: AppSettings) {
             notifications = Perms.hasNotifications(context),
             location = Perms.hasLocation(context),
             overlay = Perms.canOverlay(context),
+            camera = Perms.hasCamera(context),
+            contacts = Perms.hasContacts(context),
         )
     }
 
@@ -132,6 +163,9 @@ private fun JarvisRoot(container: AppContainer, settings: AppSettings) {
         permTick++
     }
 
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permTick++ }
+    val contactsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permTick++ }
+
     LaunchedEffect(pendingAction) {
         when (pendingAction) {
             "standby-mic", "listen" -> micLauncher.launch(Manifest.permission.RECORD_AUDIO)
@@ -153,6 +187,8 @@ private fun JarvisRoot(container: AppContainer, settings: AppSettings) {
                     arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION),
                 )
             },
+            requestCamera = { cameraLauncher.launch(Manifest.permission.CAMERA) },
+            requestContacts = { contactsLauncher.launch(Manifest.permission.READ_CONTACTS) },
             openAppSettings = {
                 context.startActivity(
                     Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")),
@@ -186,6 +222,16 @@ private fun JarvisRoot(container: AppContainer, settings: AppSettings) {
         onDispose { view.keepScreenOn = false }
     }
 
+    // Camera swipes only run on the home screen, and only while it is visible.
+    val cameraActive by container.gestures.cameraActive.collectAsState()
+    DisposableEffect(settings.cameraGestures, status.camera, booted, screen) {
+        if (settings.cameraGestures && status.camera && booted && screen == Screen.HOME) {
+            container.gestures.startCamera(lifecycleOwner)
+        }
+        onDispose { container.gestures.stopCamera() }
+    }
+    val notes by container.notes.observeAll().collectAsState(initial = emptyList())
+
     BackHandler(enabled = screen != Screen.HOME) { screen = Screen.HOME }
 
     if (!booted) {
@@ -207,6 +253,8 @@ private fun JarvisRoot(container: AppContainer, settings: AppSettings) {
             onSubmitText = controller::submitText,
             onOpenSettings = { screen = Screen.SETTINGS },
             onOpenHistory = { screen = Screen.HISTORY },
+            onOpenNotes = { screen = Screen.NOTES },
+            cameraGestureActive = cameraActive,
         )
         Screen.SETTINGS -> SettingsScreen(
             settings = settings,
@@ -214,7 +262,14 @@ private fun JarvisRoot(container: AppContainer, settings: AppSettings) {
             speaker = container.speaker,
             permissions = status,
             actions = actions,
+            proximityAvailable = container.gestures.proximityAvailable,
             onBack = { screen = Screen.HOME },
+        )
+        Screen.NOTES -> NotesScreen(
+            notes = notes,
+            onBack = { screen = Screen.HOME },
+            onDelete = { id -> scope.launch { container.notes.delete(id) } },
+            onClearAll = { scope.launch { container.notes.clear() } },
         )
         Screen.HISTORY -> ConversationScreen(
             messages = messages,

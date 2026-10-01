@@ -34,6 +34,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jarvis.assistant.data.model.AiProviderType
 import com.jarvis.assistant.data.model.AppSettings
+import com.jarvis.assistant.data.model.Gesture
+import com.jarvis.assistant.data.model.GestureAction
+import com.jarvis.assistant.data.model.WakeSensitivity
 import com.jarvis.assistant.data.model.SettingKeys
 import com.jarvis.assistant.data.model.ThemeMode
 import com.jarvis.assistant.data.model.TtsProviderType
@@ -50,6 +53,8 @@ data class PermissionStatus(
     val notifications: Boolean,
     val location: Boolean,
     val overlay: Boolean,
+    val camera: Boolean = false,
+    val contacts: Boolean = false,
 )
 
 class PermissionActions(
@@ -58,6 +63,8 @@ class PermissionActions(
     val requestLocation: () -> Unit,
     val requestOverlay: () -> Unit,
     val openAppSettings: () -> Unit,
+    val requestCamera: () -> Unit = {},
+    val requestContacts: () -> Unit = {},
 )
 
 @Composable
@@ -67,6 +74,7 @@ fun SettingsScreen(
     speaker: JarvisSpeaker,
     permissions: PermissionStatus,
     actions: PermissionActions,
+    proximityAvailable: Boolean = true,
     onBack: () -> Unit,
 ) {
     val colors = hudColors()
@@ -210,11 +218,58 @@ fun SettingsScreen(
                         "Start the listening service automatically when the app opens. A notification always shows while the microphone is active.",
                         settings.backgroundAssistant,
                     ) { save(SettingKeys.BACKGROUND_ASSISTANT, it) }
+                    DropdownRow(
+                        "Wake sensitivity",
+                        settings.wakeSensitivity.label,
+                        WakeSensitivity.values().map { it.name to it.label },
+                    ) { save(SettingKeys.WAKE_SENSITIVITY, it) }
+                    Text(
+                        "Strict = exact \"JARVIS\" only. Sensitive also accepts close mis-hearings (자비스, 자버스, Jervis…), at the cost of a few false wakes.",
+                        color = colors.textDim, fontSize = 11.sp,
+                    )
+                    SwitchRow("Haptic feedback", "Short vibration when JARVIS wakes or a gesture is recognised", settings.wakeHaptic) {
+                        save(SettingKeys.WAKE_HAPTIC, it)
+                    }
                     SwitchRow("Voice Feedback", "Speak answers aloud (off = subtitles only)", settings.voiceFeedback) {
                         save(SettingKeys.VOICE_FEEDBACK, it)
                     }
                     SwitchRow("Auto Listen", "Keep listening for a follow-up after each answer", settings.autoListen) {
                         save(SettingKeys.AUTO_LISTEN, it)
+                    }
+                }
+
+                // ---------------------------------------------------------------- Persona
+                SectionHeader("PERSONA")
+                SettingsCard {
+                    TextFieldRow("How JARVIS addresses you (English)", settings.userTitle, "title", "Sir") {
+                        save(SettingKeys.USER_TITLE, it)
+                    }
+                }
+
+                // ---------------------------------------------------------------- Gestures
+                SectionHeader("AIR GESTURES")
+                SettingsCard {
+                    SwitchRow(
+                        "Proximity wave",
+                        if (proximityAvailable) "Wave your hand over the top of the phone (works with the screen off while JARVIS is active)"
+                        else "This phone has no proximity sensor",
+                        settings.proximityGestures && proximityAvailable,
+                    ) { save(SettingKeys.PROXIMITY_GESTURES, it) }
+                    SwitchRow(
+                        "Camera swipes",
+                        "Swipe your hand in front of the front camera while the JARVIS screen is open. A \"GESTURE CAM\" label is shown whenever the camera is on; no frames are saved.",
+                        settings.cameraGestures,
+                    ) {
+                        save(SettingKeys.CAMERA_GESTURES, it)
+                        if (it && !permissions.camera) actions.requestCamera()
+                    }
+                    Gesture.values().forEach { g ->
+                        val current = settings.gestureActions[g] ?: g.default
+                        DropdownRow(
+                            g.label,
+                            current.label,
+                            GestureAction.values().map { it.name to it.label },
+                        ) { save(g.key, it) }
                     }
                 }
 
@@ -256,6 +311,14 @@ fun SettingsScreen(
                         actions.requestOverlay,
                     )
                     PermissionRow(
+                        "Camera", "Optional: only for camera air gestures", permissions.camera,
+                        onGrant = actions.requestCamera,
+                    )
+                    PermissionRow(
+                        "Contacts", "Optional: say \"call Mom\" or \"text Mom\"", permissions.contacts,
+                        onGrant = actions.requestContacts,
+                    )
+                    PermissionRow(
                         "Blocked a permission?",
                         "Open the system page for JARVIS to change it manually",
                         granted = false,
@@ -266,7 +329,7 @@ fun SettingsScreen(
 
                 SectionHeader("ABOUT")
                 SettingsCard {
-                    Text("JARVIS V1.0 · voice is never recorded or stored; API keys are encrypted in the Android Keystore.", color = colors.textDim, fontSize = 12.sp)
+                    Text("JARVIS V1.1 · voice is never recorded or stored; API keys are encrypted in the Android Keystore.", color = colors.textDim, fontSize = 12.sp)
                 }
             }
         }

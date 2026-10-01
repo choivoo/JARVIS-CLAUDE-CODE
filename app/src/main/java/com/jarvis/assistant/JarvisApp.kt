@@ -11,6 +11,17 @@ import com.jarvis.assistant.command.AppResolver
 import com.jarvis.assistant.command.AppVisibility
 import com.jarvis.assistant.command.CommandExecutor
 import com.jarvis.assistant.command.CommandRouter
+import com.jarvis.assistant.command.ContactResolver
+import com.jarvis.assistant.command.commands.CallCommand
+import com.jarvis.assistant.command.commands.CopyTextCommand
+import com.jarvis.assistant.command.commands.CreateEventCommand
+import com.jarvis.assistant.command.commands.ListNotesCommand
+import com.jarvis.assistant.command.commands.NavigateCommand
+import com.jarvis.assistant.command.commands.OpenCameraCommand
+import com.jarvis.assistant.command.commands.SaveNoteCommand
+import com.jarvis.assistant.command.commands.SendSmsCommand
+import com.jarvis.assistant.command.commands.SetTimerCommand
+import com.jarvis.assistant.command.commands.ShareTextCommand
 import com.jarvis.assistant.command.commands.FlashlightCommand
 import com.jarvis.assistant.command.commands.GetBatteryCommand
 import com.jarvis.assistant.command.commands.GetTimeCommand
@@ -30,6 +41,8 @@ import com.jarvis.assistant.data.database.JarvisDatabase
 import com.jarvis.assistant.data.model.AiProviderType
 import com.jarvis.assistant.data.model.TtsProviderType
 import com.jarvis.assistant.data.repository.ConversationRepository
+import com.jarvis.assistant.data.repository.NoteRepository
+import com.jarvis.assistant.gesture.GestureManager
 import com.jarvis.assistant.data.repository.SettingsRepository
 import com.jarvis.assistant.search.BrowserSearchProvider
 import com.jarvis.assistant.search.InstantAnswerSearchProvider
@@ -69,6 +82,7 @@ class AppContainer(app: Application) {
 
     val secure = SecureStorage(app)
     private val database = JarvisDatabase.create(app)
+    val notes = NoteRepository(database.noteDao())
     val settings = SettingsRepository(database.settingsDao(), secure, appScope)
     val conversations = ConversationRepository(database.conversationDao())
 
@@ -97,6 +111,7 @@ class AppContainer(app: Application) {
     // Commands
     private val launcher = ActivityLauncher(app, visibility)
     private val resolver = AppResolver(app)
+    private val contacts = ContactResolver(app)
     private val router = CommandRouter(
         listOf(
             OpenAppCommand(resolver, launcher),
@@ -113,6 +128,16 @@ class AppContainer(app: Application) {
             NotificationCommand(app),
             MusicCommand(app, resolver, launcher),
             WeatherCommand(OpenMeteoWeatherProvider(), LocationProvider(app), settings),
+            SetTimerCommand(launcher),
+            CallCommand(launcher, contacts),
+            SendSmsCommand(launcher, contacts),
+            NavigateCommand(resolver, launcher),
+            CreateEventCommand(launcher),
+            OpenCameraCommand(launcher),
+            CopyTextCommand(app),
+            ShareTextCommand(launcher),
+            SaveNoteCommand(notes),
+            ListNotesCommand(notes),
         ),
     )
     private val executor = CommandExecutor(router)
@@ -130,4 +155,5 @@ class AppContainer(app: Application) {
         network = network,
         levels = levels,
     )
+    val gestures = GestureManager(app, settings, controller, appScope)
 }

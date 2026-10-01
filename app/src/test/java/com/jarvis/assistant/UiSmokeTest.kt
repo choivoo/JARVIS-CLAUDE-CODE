@@ -159,7 +159,7 @@ class UiSmokeTest {
                     repo = repo,
                     speaker = speaker,
                     permissions = PermissionStatus(mic = true, notifications = false, location = false, overlay = false),
-                    actions = PermissionActions({}, {}, {}, {}, {}),
+                    actions = PermissionActions({}, {}, {}, {}, {}, {}, {}),
                     onBack = {},
                 )
             }

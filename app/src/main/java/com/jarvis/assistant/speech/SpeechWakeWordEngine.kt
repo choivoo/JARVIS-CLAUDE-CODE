@@ -1,6 +1,7 @@
 package com.jarvis.assistant.speech
 
 import android.content.Context
+import com.jarvis.assistant.data.model.WakeSensitivity
 import com.jarvis.assistant.util.JLog
 import com.jarvis.assistant.util.Perms
 import kotlinx.coroutines.delay
@@ -16,7 +17,7 @@ class SpeechWakeWordEngine(
 ) : WakeWordEngine {
     override val name = "SpeechRecognizer wake word"
 
-    override suspend fun awaitWake(languageTag: String): WakeDetection {
+    override suspend fun awaitWake(languageTag: String, sensitivity: WakeSensitivity): WakeDetection {
         if (!Perms.hasMic(context)) throw WakeWordException(WakeError.PERMISSION, "Microphone permission missing")
         if (!recognizer.isAvailable()) throw WakeWordException(WakeError.UNAVAILABLE, "No speech recognition service")
 
@@ -28,15 +29,17 @@ class SpeechWakeWordEngine(
                     languageTag = languageTag,
                     preferOffline = true,
                     preferOnDevice = true,
-                    maxDurationMs = 10_000,
-                    silenceMs = 900,
+                    maxDurationMs = 8_000,
+                    silenceMs = 650,
+                    // "JARVIS" is an English word: let a Korean recognizer also hear en-US.
+                    additionalLanguages = if (languageTag.startsWith("en")) emptyList() else listOf("en-US"),
                 ),
             )
             when (result) {
                 is SttResult.Text -> {
                     consecutiveFailures = 0
                     backoff = 300L
-                    WakeWordMatcher.match(result.alternatives)?.let { return it }
+                    WakeWordMatcher.match(result.alternatives, sensitivity)?.let { return it }
                 }
                 SttResult.NoSpeech -> {
                     consecutiveFailures = 0

@@ -24,6 +24,35 @@ enum class TtsProviderType(
 
 enum class ThemeMode(val label: String) { DARK("Dark"), AMOLED("AMOLED"), LIGHT("Light") }
 
+enum class WakeSensitivity(val label: String) {
+    STRICT("Strict"), NORMAL("Normal"), SENSITIVE("Sensitive")
+}
+
+/** What an air gesture can trigger. */
+enum class GestureAction(val label: String, val commandType: String?) {
+    NONE("Nothing", null),
+    LISTEN("Start / stop listening", null),
+    STOP("Stop JARVIS", null),
+    MUSIC_TOGGLE("Play / pause music", null),
+    MUSIC_NEXT("Next track", "MUSIC_NEXT"),
+    MUSIC_PREVIOUS("Previous track", "MUSIC_PREVIOUS"),
+    VOLUME_UP("Volume up", "VOLUME_UP"),
+    VOLUME_DOWN("Volume down", "VOLUME_DOWN"),
+    FLASHLIGHT_TOGGLE("Toggle flashlight", null),
+    TELL_TIME("Tell the time", "GET_TIME"),
+    TELL_BATTERY("Tell the battery level", "GET_BATTERY"),
+    TELL_WEATHER("Tell the weather", "WEATHER"),
+}
+
+enum class Gesture(val key: String, val label: String, val default: GestureAction) {
+    WAVE("gesture.wave", "Wave over the phone", GestureAction.LISTEN),
+    DOUBLE_WAVE("gesture.doubleWave", "Double wave over the phone", GestureAction.STOP),
+    SWIPE_LEFT("gesture.swipeLeft", "Swipe left (camera)", GestureAction.MUSIC_NEXT),
+    SWIPE_RIGHT("gesture.swipeRight", "Swipe right (camera)", GestureAction.MUSIC_PREVIOUS),
+    SWIPE_UP("gesture.swipeUp", "Swipe up (camera)", GestureAction.VOLUME_UP),
+    SWIPE_DOWN("gesture.swipeDown", "Swipe down (camera)", GestureAction.VOLUME_DOWN),
+}
+
 object SettingKeys {
     const val AI_PROVIDER = "ai.provider"
     const val TTS_PROVIDER = "tts.provider"
@@ -40,6 +69,11 @@ object SettingKeys {
     const val WEATHER_CITY = "weather.city"
     const val LAST_LAT = "location.lat"
     const val LAST_LON = "location.lon"
+    const val WAKE_SENSITIVITY = "wake.sensitivity"
+    const val WAKE_HAPTIC = "wake.haptic"
+    const val USER_TITLE = "user.title"
+    const val PROXIMITY_GESTURES = "gesture.proximity.enabled"
+    const val CAMERA_GESTURES = "gesture.camera.enabled"
 
     fun aiEndpoint(p: AiProviderType) = "ai.endpoint.${p.name}"
     fun aiModel(p: AiProviderType) = "ai.model.${p.name}"
@@ -71,6 +105,13 @@ data class AppSettings(
     val weatherCity: String = "Seoul",
     val lastLat: Double? = null,
     val lastLon: Double? = null,
+    val wakeSensitivity: WakeSensitivity = WakeSensitivity.NORMAL,
+    val wakeHaptic: Boolean = true,
+    /** How JARVIS addresses the user in English speech ("Sir", "Ma'am", a name). */
+    val userTitle: String = "Sir",
+    val proximityGestures: Boolean = true,
+    val cameraGestures: Boolean = false,
+    val gestureActions: Map<Gesture, GestureAction> = Gesture.values().associateWith { it.default },
 ) {
     companion object {
         const val WAKE_WORD = "JARVIS"
@@ -103,6 +144,15 @@ data class AppSettings(
                 weatherCity = map[SettingKeys.WEATHER_CITY]?.takeIf { it.isNotBlank() } ?: "Seoul",
                 lastLat = map[SettingKeys.LAST_LAT]?.toDoubleOrNull(),
                 lastLon = map[SettingKeys.LAST_LON]?.toDoubleOrNull(),
+                wakeSensitivity = WakeSensitivity.values().firstOrNull { it.name == enum(SettingKeys.WAKE_SENSITIVITY) }
+                    ?: WakeSensitivity.NORMAL,
+                wakeHaptic = bool(SettingKeys.WAKE_HAPTIC, true),
+                userTitle = map[SettingKeys.USER_TITLE]?.trim()?.takeIf { it.isNotEmpty() } ?: "Sir",
+                proximityGestures = bool(SettingKeys.PROXIMITY_GESTURES, true),
+                cameraGestures = bool(SettingKeys.CAMERA_GESTURES, false),
+                gestureActions = Gesture.values().associateWith { g ->
+                    GestureAction.values().firstOrNull { it.name == map[g.key] } ?: g.default
+                },
             )
         }
     }

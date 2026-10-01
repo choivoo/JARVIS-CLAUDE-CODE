@@ -2,4 +2,7 @@
     <string name="app_name">JARVIS</string>
     <string name="notification_channel_standby">JARVIS standby</string>
     <string name="notification_channel_actions">JARVIS actions</string>
+    <string name="tile_label">JARVIS</string>
+    <string name="shortcut_listen_short">Talk to JARVIS</string>
+    <string name="shortcut_listen_long">Start listening</string>
 </resources>

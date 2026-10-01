@@ -27,7 +27,6 @@ class ActivityLauncher(
 
     fun launch(intent: Intent, title: String): Outcome {
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        if (intent.resolveActivity(context.packageManager) == null) return Outcome.FAILED
         val canStartDirectly = visibility.isForeground || Perms.canOverlay(context)
         if (canStartDirectly) {
             return try {

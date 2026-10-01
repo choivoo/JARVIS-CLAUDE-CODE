@@ -31,6 +31,7 @@ import com.jarvis.assistant.speech.WakeWordException
 import com.jarvis.assistant.tts.SpeechOutput
 import com.jarvis.assistant.tts.TtsException
 import com.jarvis.assistant.util.AudioLevelBus
+import com.jarvis.assistant.util.Haptics
 import com.jarvis.assistant.util.JLog
 import com.jarvis.assistant.util.NetworkMonitor
 import com.jarvis.assistant.util.Perms
@@ -121,6 +122,29 @@ class JarvisController(
         schedule { interaction(clean.take(MAX_UTTERANCE)) }
     }
 
+    /** Stops speaking / listening / thinking and returns to standby (or idle). */
+    fun interrupt() = schedule(null)
+
+    /**
+     * Runs one command directly (air gestures, quick-action chips). Silent actions only flash a
+     * notice so they never cut JARVIS off; spoken ones go through the normal pipeline.
+     */
+    fun quickAction(action: AiAction, speak: Boolean) {
+        if (speak) {
+            schedule {
+                _hud.update { it.copy(phase = AssistantPhase.EXECUTING) }
+                val result = executor.execute(action)
+                val line = result.speech
+                if (line != null) say(line, result.subtitle, null)
+            }
+        } else {
+            scope.launch {
+                val result = executor.execute(action)
+                (result.subtitle ?: result.speech)?.let { showNotice(it) }
+            }
+        }
+    }
+
     fun reportError(message: String) = showError(message)
 
     fun dismissNotice() {
@@ -168,7 +192,7 @@ class JarvisController(
                 continue
             }
             val detection: WakeDetection = try {
-                wakeEngine.awaitWake(settings.inputLanguage)
+                wakeEngine.awaitWake(settings.inputLanguage, settings.wakeSensitivity)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: WakeWordException) {
@@ -194,11 +218,13 @@ class JarvisController(
             }
             transientFailures = 0
             JLog.d("Controller", "Wake word detected")
+            if (settings.wakeHaptic) Haptics.tick(context)
             val inline = detection.trailingText
             if (inline != null) {
                 interaction(inline.take(MAX_UTTERANCE))
             } else {
-                val (speech, subtitle) = ACKNOWLEDGEMENTS.random()
+                val addr = if (settings.userTitle.equals("Sir", ignoreCase = true)) "sir" else settings.userTitle
+                val (speech, subtitle) = acknowledgements(addr).random()
                 say(speech, subtitle, null, persistMessage = false)
                 delay(150)
                 interaction(null)
@@ -344,7 +370,7 @@ class JarvisController(
 
     private suspend fun buildTurns(userText: String, settings: AppSettings, toolFollowUp: String?): List<ChatTurn> {
         val turns = mutableListOf(
-            ChatTurn(ChatTurn.SYSTEM, PromptBuilder.system(ZonedDateTime.now(), settings.weatherCity)),
+            ChatTurn(ChatTurn.SYSTEM, PromptBuilder.system(ZonedDateTime.now(), settings.weatherCity, settings.userTitle)),
         )
         val history = try {
             conversations.recentContext(HISTORY_LIMIT)
@@ -498,8 +524,8 @@ class JarvisController(
         const val NOTICE_MS = 4_500L
         const val ERROR_MS = 6_000L
 
-        val ACKNOWLEDGEMENTS = listOf(
-            "Yes, sir?" to "네, 말씀하세요.",
+        fun acknowledgements(addr: String) = listOf(
+            "Yes, $addr?" to "네, 말씀하세요.",
             "At your service." to "말씀하세요.",
             "I'm listening." to "듣고 있습니다.",
             "How may I help?" to "무엇을 도와드릴까요?",

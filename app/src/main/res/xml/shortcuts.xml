@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="listen"
+        android:enabled="true"
+        android:icon="@drawable/ic_stat_jarvis"
+        android:shortcutShortLabel="@string/shortcut_listen_short"
+        android:shortcutLongLabel="@string/shortcut_listen_long">
+        <intent
+            android:action="android.intent.action.MAIN"
+            android:targetClass="com.jarvis.assistant.MainActivity"
+            android:targetPackage="com.jarvis.assistant">
+            <extra android:name="com.jarvis.assistant.extra.LISTEN" android:value="true" />
+        </intent>
+    </shortcut>
+</shortcuts>

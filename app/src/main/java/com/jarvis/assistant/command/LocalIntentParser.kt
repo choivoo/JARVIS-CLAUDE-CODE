@@ -23,6 +23,8 @@ object LocalIntentParser {
     )
     private val appSuffix = Regex("(?:을|를|좀|앱|어플|어플리케이션|애플리케이션|프로그램)$")
 
+    private data class Quad(val a: String, val b: String, val c: String, val d: String)
+
     private fun reply(speech: String, subtitle: String, type: String? = null, vararg params: Pair<String, String>) =
         AiReply(speech, subtitle, type?.let { AiAction(it, params.toMap()) })
 
@@ -31,6 +33,52 @@ object LocalIntentParser {
         val text = (if (wake != null) wake.trailingText.orEmpty() else input).trim()
         if (text.isEmpty()) return null
         val t = text.replace(Regex("\\s+"), " ")
+
+        // Timer ("10분 타이머", "30초 뒤에 알려줘")
+        if (t.contains("타이머") || Regex("\\d+\\s*(?:분|초|시간)\\s*(?:뒤|후)에?\\s*(?:알려|깨워)").containsMatchIn(t)) {
+            val h = Regex("(\\d+)\\s*시간").find(t)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            val m = Regex("(\\d+)\\s*분").find(t)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            val sec = Regex("(\\d+)\\s*초").find(t)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            if (h + m + sec == 0) return reply("How long should the timer run?", "타이머를 몇 분으로 맞출까요?")
+            val spoken = listOfNotNull(
+                h.takeIf { it > 0 }?.let { "$it hour${if (it > 1) "s" else ""}" },
+                m.takeIf { it > 0 }?.let { "$it minute${if (it > 1) "s" else ""}" },
+                sec.takeIf { it > 0 }?.let { "$it second${if (it > 1) "s" else ""}" },
+            ).joinToString(" ")
+            return reply(
+                "Starting a timer for $spoken.", "${listOfNotNull(h.takeIf { it > 0 }?.let { "${it}시간" }, m.takeIf { it > 0 }?.let { "${it}분" }, sec.takeIf { it > 0 }?.let { "${it}초" }).joinToString(" ")} 타이머를 시작합니다.",
+                "SET_TIMER", "hours" to h.toString(), "minutes" to m.toString(), "seconds" to sec.toString(),
+            )
+        }
+
+        // Notes
+        Regex("^(.+?)\\s*(?:라고|이라고)?\\s*메모(?:해|해줘|해 줘|하라고)").find(t)?.let {
+            val note = it.groupValues[1].trim()
+            if (note.isNotEmpty()) return reply("I'll make a note of that.", "메모해 두겠습니다.", "NOTE_SAVE", "text" to note)
+        }
+        if (Regex("메모\\s*(?:읽어|보여|알려|목록)").containsMatchIn(t)) {
+            return reply("Let me read your notes.", "메모를 확인합니다.", "NOTE_LIST")
+        }
+
+        // Navigation
+        Regex("^(.+?)(?:까지)?\\s*(?:길\\s*안내|길찾기|내비|네비|가는\\s*길)").find(t)?.let {
+            val dest = it.groupValues[1].trim()
+            if (dest.isNotEmpty()) return reply("Starting directions.", "길 안내를 시작합니다.", "NAVIGATE", "destination" to dest)
+        }
+
+        // Camera / connectivity settings
+        if (Regex("카메라").containsMatchIn(t) && Regex("열어|켜|실행|찍").containsMatchIn(t)) {
+            return reply("Opening the camera.", "카메라를 엽니다.", "OPEN_CAMERA")
+        }
+        for ((word, target, en, ko) in listOf(
+            Quad("와이파이|wifi|와이 파이", "wifi", "Wi-Fi settings", "와이파이 설정"),
+            Quad("블루투스", "bluetooth", "Bluetooth settings", "블루투스 설정"),
+            Quad("비행기\\s*모드", "airplane", "airplane mode settings", "비행기 모드 설정"),
+        )) {
+            if (Regex(word, RegexOption.IGNORE_CASE).containsMatchIn(t) && Regex("열어|켜|꺼|설정|끄").containsMatchIn(t)) {
+                return reply("Opening $en.", "${ko}을 엽니다.", "OPEN_SETTINGS", "target" to target)
+            }
+        }
 
         // Alarm
         if (t.contains("알람") || t.contains("깨워")) {

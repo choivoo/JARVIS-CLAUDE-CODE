@@ -38,6 +38,7 @@ class JarvisForegroundService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var observer: Job? = null
     private var started = false
+    private var gesturesHeld = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -84,6 +85,10 @@ class JarvisForegroundService : Service() {
         if (!controller.startStandby()) {
             shutDown()
             return START_NOT_STICKY
+        }
+        if (!gesturesHeld) {
+            gesturesHeld = true
+            container.gestures.acquire()
         }
         if (!started) {
             started = true
@@ -142,14 +147,23 @@ class JarvisForegroundService : Service() {
             .build()
     }
 
+    private fun releaseGestures() {
+        if (gesturesHeld) {
+            gesturesHeld = false
+            container.gestures.release()
+        }
+    }
+
     private fun shutDown() {
         observer?.cancel()
         started = false
+        releaseGestures()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
     override fun onDestroy() {
+        releaseGestures()
         container.controller.stopStandby()
         scope.cancel()
         super.onDestroy()

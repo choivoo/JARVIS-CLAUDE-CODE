@@ -99,6 +99,12 @@ class AndroidSpeechRecognizer(private val context: Context) : SpeechRecognizerEn
                             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
                             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, request.preferOffline)
+                            if (request.additionalLanguages.isNotEmpty()) {
+                                putStringArrayListExtra(
+                                    "android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES",
+                                    ArrayList(request.additionalLanguages),
+                                )
+                            }
                             putExtra(
                                 RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,
                                 request.silenceMs,

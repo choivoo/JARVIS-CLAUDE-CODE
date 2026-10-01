@@ -13,16 +13,28 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
+    }
+
+    // One fixed key for every build (local and CI) so a newer APK installs over an older one as an update.
+    // Same applicationId + same signature = in-place update. Replace before publishing to a store.
+    signingConfigs {
+        create("jarvis") {
+            storeFile = rootProject.file("keystore/jarvis.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("jarvis")
+        }
         release {
             isMinifyEnabled = false
-            // Signed with the debug key so the release APK is directly installable.
-            // Replace with your own signing config before publishing.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("jarvis")
         }
     }
 
@@ -64,6 +76,10 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
+
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
 
     implementation(libs.okhttp)
     implementation(libs.kotlinx.coroutines.android)

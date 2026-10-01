@@ -1,5 +1,7 @@
 package com.jarvis.assistant.speech
 
+import com.jarvis.assistant.data.model.WakeSensitivity
+
 /** [trailingText] is whatever the user said after the wake word in the same breath, if anything. */
 data class WakeDetection(val phrase: String, val trailingText: String?)
 
@@ -16,5 +18,5 @@ interface WakeWordEngine {
     val name: String
 
     @Throws(WakeWordException::class)
-    suspend fun awaitWake(languageTag: String): WakeDetection
+    suspend fun awaitWake(languageTag: String, sensitivity: WakeSensitivity = WakeSensitivity.NORMAL): WakeDetection
 }

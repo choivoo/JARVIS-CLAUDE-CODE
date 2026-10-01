@@ -44,3 +44,21 @@ interface SettingsDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putAll(entities: List<SettingsEntity>)
 }
+
+@Dao
+interface NoteDao {
+    @Insert
+    suspend fun insert(note: NoteEntity): Long
+
+    @Query("SELECT * FROM notes ORDER BY createdAt DESC, id DESC")
+    fun observeAll(): Flow<List<NoteEntity>>
+
+    @Query("SELECT * FROM notes ORDER BY createdAt DESC, id DESC LIMIT :limit")
+    suspend fun latest(limit: Int): List<NoteEntity>
+
+    @Query("DELETE FROM notes WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("DELETE FROM notes")
+    suspend fun deleteAll()
+}

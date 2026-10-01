@@ -45,6 +45,13 @@ data class SettingsEntity(
     val value: String,
 )
 
+@Entity(tableName = "notes")
+data class NoteEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val text: String,
+    val createdAt: Long,
+)
+
 object Role {
     const val USER = "USER"
     const val JARVIS = "JARVIS"

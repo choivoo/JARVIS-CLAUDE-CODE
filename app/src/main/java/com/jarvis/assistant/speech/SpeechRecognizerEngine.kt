@@ -7,6 +7,8 @@ data class ListenRequest(
     val preferOnDevice: Boolean = false,
     val maxDurationMs: Long = 20_000,
     val silenceMs: Long = 1_200,
+    /** Extra languages the recognizer may hear (e.g. English words inside Korean speech). */
+    val additionalLanguages: List<String> = emptyList(),
 )
 
 class ListenCallbacks(

@@ -82,4 +82,29 @@ class LocalIntentParserTest {
     fun smallTalkIsNotACommand() {
         assertNull(LocalIntentParser.parse("너는 누구니", now))
     }
+
+    @Test
+    fun timer() {
+        val a = LocalIntentParser.parse("10분 타이머 맞춰줘", now)?.action
+        assertEquals("SET_TIMER", a?.type)
+        assertEquals("10", a?.param("minutes"))
+        assertEquals("SET_TIMER", LocalIntentParser.parse("30초 뒤에 알려줘", now)?.action?.type)
+    }
+
+    @Test
+    fun notes() {
+        val a = LocalIntentParser.parse("우유 사기 메모해줘", now)?.action
+        assertEquals("NOTE_SAVE", a?.type)
+        assertEquals("우유 사기", a?.param("text"))
+        assertEquals("NOTE_LIST", type("메모 읽어줘"))
+    }
+
+    @Test
+    fun navigationCameraAndSettings() {
+        assertEquals("NAVIGATE", type("강남역 길안내 해줘"))
+        assertEquals("OPEN_CAMERA", type("카메라 열어줘"))
+        val wifi = LocalIntentParser.parse("와이파이 설정 열어줘", now)?.action
+        assertEquals("OPEN_SETTINGS", wifi?.type)
+        assertEquals("wifi", wifi?.param("target"))
+    }
 }
