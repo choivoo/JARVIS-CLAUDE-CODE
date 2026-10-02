@@ -4,8 +4,10 @@ import com.jarvis.assistant.data.database.SettingsDao
 import com.jarvis.assistant.data.database.SettingsEntity
 import com.jarvis.assistant.data.model.AiProviderType
 import com.jarvis.assistant.data.model.AppSettings
+import com.jarvis.assistant.data.model.SettingKeys
 import com.jarvis.assistant.data.model.TtsProviderType
-import com.jarvis.assistant.security.SecureStorage
+import com.jarvis.assistant.ai.AiConfig
+import com.jarvis.assistant.security.SecretStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -14,7 +16,7 @@ import kotlinx.coroutines.flow.stateIn
 
 class SettingsRepository(
     private val dao: SettingsDao,
-    private val secure: SecureStorage,
+    private val secure: SecretStore,
     scope: CoroutineScope,
 ) {
     val settings: StateFlow<AppSettings> = dao.observeAll()
@@ -23,6 +25,14 @@ class SettingsRepository(
 
     suspend fun current(): AppSettings =
         AppSettings.from(dao.getAll().associate { it.key to it.value })
+
+    /** Endpoint, model and key for any provider (used for automatic failover). */
+    suspend fun aiConfig(provider: AiProviderType): AiConfig = AiConfig(
+        provider = provider,
+        endpoint = dao.getValue(SettingKeys.aiEndpoint(provider))?.takeIf { it.isNotBlank() } ?: provider.defaultEndpoint,
+        model = dao.getValue(SettingKeys.aiModel(provider))?.takeIf { it.isNotBlank() } ?: provider.defaultModel,
+        apiKey = aiApiKey(provider),
+    )
 
     suspend fun getRaw(key: String): String? = dao.getValue(key)
 

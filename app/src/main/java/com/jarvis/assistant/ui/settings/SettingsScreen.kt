@@ -136,11 +136,24 @@ fun SettingsScreen(
                         onSave = { repo.setAiApiKey(settings.aiProvider, it); keyVersion++ },
                         onRemove = { repo.setAiApiKey(settings.aiProvider, null); keyVersion++ },
                     )
-                    Text(
-                        "Ollama / local servers need no key. Use your PC's LAN address instead of localhost.",
-                        color = colors.textDim,
-                        fontSize = 11.sp,
-                    )
+                    Text(settings.aiProvider.freeNote, color = colors.textDim, fontSize = 11.sp)
+                    val ctx = androidx.compose.ui.platform.LocalContext.current
+                    Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = {
+                                ctx.startActivity(
+                                    android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(settings.aiProvider.keyUrl))
+                                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                                )
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = Color.Black),
+                        ) { Text("GET A KEY", fontSize = 12.sp, letterSpacing = 1.sp) }
+                    }
+                    SwitchRow(
+                        "Auto-switch when a limit is hit",
+                        "Add free keys for several providers (Gemini, Groq, Cerebras, OpenRouter). When one runs out, JARVIS continues with the next.",
+                        settings.aiFailover,
+                    ) { save(SettingKeys.AI_FAILOVER, it) }
                 }
 
                 // ---------------------------------------------------------------- TTS

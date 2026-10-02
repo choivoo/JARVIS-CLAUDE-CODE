@@ -16,7 +16,14 @@ import javax.crypto.spec.GCMParameterSpec
  * The key material never leaves secure hardware / the keystore process, and plaintext values are
  * never written to disk or logs.
  */
-class SecureStorage(context: Context) {
+/** Minimal secret storage contract (lets tests use an in-memory store). */
+interface SecretStore {
+    fun put(name: String, value: String?)
+    fun get(name: String): String?
+    fun has(name: String): Boolean
+}
+
+class SecureStorage(context: Context) : SecretStore {
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     private fun secretKey(): SecretKey {
@@ -36,7 +43,7 @@ class SecureStorage(context: Context) {
         return generator.generateKey()
     }
 
-    fun put(name: String, value: String?) {
+    override fun put(name: String, value: String?) {
         val clean = value?.trim().orEmpty()
         if (clean.isEmpty()) {
             prefs.edit().remove(name).apply()
@@ -53,7 +60,7 @@ class SecureStorage(context: Context) {
         }
     }
 
-    fun get(name: String): String? {
+    override fun get(name: String): String? {
         val encoded = prefs.getString(name, null) ?: return null
         return try {
             val blob = Base64.decode(encoded, Base64.NO_WRAP)
@@ -68,7 +75,7 @@ class SecureStorage(context: Context) {
         }
     }
 
-    fun has(name: String) = prefs.contains(name)
+    override fun has(name: String) = prefs.contains(name)
 
     private companion object {
         const val PREFS = "jarvis_secure_store"

@@ -173,7 +173,12 @@ class AppContainer(app: Application) {
 
     // Brain
     private val aiProviders: Map<AiProviderType, AIProvider> = listOf(
-        OpenAICompatibleProvider(), GeminiProvider(), OllamaProvider(),
+        GeminiProvider(),
+        OllamaProvider(),
+        OpenAICompatibleProvider(AiProviderType.OPENAI_COMPATIBLE),
+        OpenAICompatibleProvider(AiProviderType.GROQ),
+        OpenAICompatibleProvider(AiProviderType.CEREBRAS),
+        OpenAICompatibleProvider(AiProviderType.OPENROUTER),
     ).associateBy { it.type }
 
     // Commands

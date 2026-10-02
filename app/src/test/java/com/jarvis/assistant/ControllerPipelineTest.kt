@@ -137,7 +137,7 @@ class ControllerPipelineTest {
         scope = bg,
         settingsRepo = settings,
         conversations = conversations,
-        aiProviders = mapOf(AiProviderType.OPENAI_COMPATIBLE to ai),
+        aiProviders = AiProviderType.values().associateWith { ai },
         recognizer = recognizer,
         wakeEngine = wake,
         speaker = speaker,
@@ -187,7 +187,7 @@ class ControllerPipelineTest {
             }
         }
         c = JarvisController(
-            app, bg, settings, conversations, mapOf(AiProviderType.OPENAI_COMPATIBLE to ai),
+            app, bg, settings, conversations, AiProviderType.values().associateWith { ai },
             FakeRecognizer(), FakeWake(WakeDetection("jarvis", null)), spy,
             CommandExecutor(CommandRouter(emptyList())), NetworkMonitor(app), AudioLevelBus(),
         )

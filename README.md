@@ -10,6 +10,17 @@ Korean voice in → AI → calm English voice out, with Korean subtitles on a bl
 * `minSdk 29` (Android 10) · `compileSdk/targetSdk 35`
 * No Google Play Services, no proprietary SDKs
 
+## Free AI (1.2.1)
+
+JARVIS now defaults to **Google Gemini Flash-Lite**, which has a free tier with no credit card. Free limits change,
+so check the provider's console; at the time of writing Flash-Lite allows about 1,000 requests a day.
+
+1. Settings → AI CORE → *GET A KEY* (opens the provider's key page) and paste the key.
+2. Add keys for more than one free provider (Gemini, Groq, Cerebras, OpenRouter). When one hits its limit, JARVIS
+   switches to the next automatically and rests the limited one for 90 seconds (*Auto-switch* in Settings).
+3. Stretching the quota: clear device commands run locally ("Instant shortcuts"), the prompt only includes the action
+   groups a sentence may need, history is shortened, replies are length-capped, and Gemini 2.5 "thinking" is off.
+
 ## What's new in 1.2 (official update of 1.0 / 1.1)
 
 * **JARVIS voice** – every sentence passes through a studio-style chain (rumble filter, low-end warmth, presence,

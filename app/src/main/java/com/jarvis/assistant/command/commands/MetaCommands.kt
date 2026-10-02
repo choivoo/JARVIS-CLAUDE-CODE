@@ -147,7 +147,8 @@ class StatusReportCommand(
         } ?: -1
         val stat = StatFs(Environment.getDataDirectory().path)
         val freeGb = stat.availableBytes / 1_073_741_824.0
-        val aiReady = settings.hasAiApiKey(s.aiProvider) || s.aiProvider.name == "OLLAMA" || !s.aiEndpoint.contains("api.openai.com")
+        val aiReady = s.aiProvider.name == "OLLAMA" ||
+            com.jarvis.assistant.data.model.AiProviderType.values().any { settings.hasAiApiKey(it) }
         val issues = mutableListOf<Pair<String, String>>()
         if (!Perms.hasMic(context)) issues += "the microphone is not permitted" to "마이크 권한 없음"
         if (!network.checkNow()) issues += "there is no internet connection" to "인터넷 연결 없음"

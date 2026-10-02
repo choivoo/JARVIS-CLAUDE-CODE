@@ -334,15 +334,9 @@ class JarvisController(
             if (action != null && action.type.uppercase() in LOCAL_FIRST && executor.resolve(action) != null) return local
             if (action != null && action.type.uppercase() in LOCAL_FIRST_SPECIAL) return local
         }
-        val config = AiConfig(
-            provider = settings.aiProvider,
-            endpoint = settings.aiEndpoint,
-            model = settings.aiModel,
-            apiKey = settingsRepo.aiApiKey(settings.aiProvider),
-        )
         return try {
             val turns = buildTurns(userText, settings, toolFollowUp = null)
-            val raw = withTimeout(AI_TIMEOUT_MS) { aiProviders.getValue(settings.aiProvider).complete(config, turns) }
+            val raw = completeWithFailover(settings, turns)
             val parsed = AiReplyParser.parse(raw)
             if (!parsed.wellFormed && local != null) local else parsed
         } catch (e: TimeoutCancellationException) {
@@ -374,14 +368,54 @@ class JarvisController(
         }
     }
 
+    /** Providers that were rate limited recently, so they are skipped for a short while. */
+    private val cooldownUntil = mutableMapOf<AiProviderType, Long>()
+
+    /**
+     * Tries the selected provider first, then every other provider that has a key (free tiers run
+     * out quickly, so several free keys together last much longer). Only limit / outage style
+     * failures move on to the next provider; being offline or a bad request does not.
+     */
+    private suspend fun completeWithFailover(settings: AppSettings, turns: List<ChatTurn>): String {
+        val primary = settingsRepo.aiConfig(settings.aiProvider)
+        val chain = mutableListOf(primary)
+        if (settings.aiFailover) {
+            for (type in FAILOVER_ORDER) {
+                if (type == primary.provider) continue
+                val cfg = settingsRepo.aiConfig(type)
+                if (!cfg.apiKey.isNullOrBlank()) chain += cfg
+            }
+        }
+        val now = System.currentTimeMillis()
+        var last: AiException? = null
+        for ((index, cfg) in chain.withIndex()) {
+            val resting = (cooldownUntil[cfg.provider] ?: 0L) > now
+            // The chosen provider is always tried first; resting backups are skipped.
+            if (resting && index > 0 && last != null) continue
+            try {
+                val provider = aiProviders[cfg.provider] ?: continue
+                val raw = try {
+                    withTimeout(AI_ATTEMPT_MS) { provider.complete(cfg, turns) }
+                } catch (e: TimeoutCancellationException) {
+                    throw AiException(AiError.TIMEOUT, "The AI service timed out")
+                }
+                if (index > 0) showNotice("${cfg.provider.label} 로 자동 전환했습니다.")
+                return raw
+            } catch (e: AiException) {
+                last = e
+                JLog.w("Controller", "AI ${cfg.provider} failed: ${e.kind}")
+                if (e.kind == AiError.RATE_LIMIT) cooldownUntil[cfg.provider] = System.currentTimeMillis() + RATE_LIMIT_REST_MS
+                if (e.kind !in FAILOVER_KINDS) throw e
+            }
+        }
+        throw last ?: AiException(AiError.NOT_CONFIGURED, "No AI provider available")
+    }
+
     /** Asks the AI to phrase a command result; null when it is unreachable (caller uses the local text). */
     private suspend fun followUp(action: AiAction, data: String, userText: String, settings: AppSettings): AiReply? {
-        val config = AiConfig(
-            settings.aiProvider, settings.aiEndpoint, settings.aiModel, settingsRepo.aiApiKey(settings.aiProvider),
-        )
         return try {
             val turns = buildTurns(userText, settings, toolFollowUp = PromptBuilder.toolResultTurn(action.type, data))
-            val raw = withTimeout(AI_TIMEOUT_MS) { aiProviders.getValue(settings.aiProvider).complete(config, turns) }
+            val raw = completeWithFailover(settings, turns)
             AiReplyParser.parse(raw).takeIf { it.wellFormed }?.copy(action = null)
         } catch (e: CancellationException) {
             if (e is TimeoutCancellationException) null else throw e
@@ -393,7 +427,7 @@ class JarvisController(
 
     private suspend fun buildTurns(userText: String, settings: AppSettings, toolFollowUp: String?): List<ChatTurn> {
         val turns = mutableListOf(
-            ChatTurn(ChatTurn.SYSTEM, PromptBuilder.system(ZonedDateTime.now(), settings.weatherCity, settings.userTitle)),
+            ChatTurn(ChatTurn.SYSTEM, PromptBuilder.system(ZonedDateTime.now(), settings.weatherCity, settings.userTitle, userText)),
         )
         val history = try {
             conversations.recentContext(HISTORY_LIMIT)
@@ -413,9 +447,9 @@ class JarvisController(
 
     private fun MessageEntity.toTurn(): ChatTurn =
         if (role == Role.USER) {
-            ChatTurn(ChatTurn.USER, text)
+            ChatTurn(ChatTurn.USER, text.take(300))
         } else {
-            val json = JSONObject().put("speech", text).put("subtitle", subtitle.orEmpty())
+            val json = JSONObject().put("speech", text.take(200)).put("subtitle", subtitle.orEmpty().take(120))
             json.put(
                 "action",
                 actionJson?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject.NULL,
@@ -588,7 +622,17 @@ class JarvisController(
     }
 
     private companion object {
-        const val AI_TIMEOUT_MS = 40_000L
+        const val AI_ATTEMPT_MS = 25_000L
+        const val RATE_LIMIT_REST_MS = 90_000L
+
+        /** Order in which backup providers are tried (largest free allowance first). */
+        val FAILOVER_ORDER = listOf(
+            AiProviderType.GEMINI, AiProviderType.GROQ, AiProviderType.CEREBRAS,
+            AiProviderType.OPENROUTER, AiProviderType.OPENAI_COMPATIBLE,
+        )
+        val FAILOVER_KINDS = setOf(
+            AiError.RATE_LIMIT, AiError.SERVER, AiError.TIMEOUT, AiError.AUTH, AiError.BAD_RESPONSE, AiError.NOT_CONFIGURED,
+        )
 
         /** Deterministic commands answered instantly without the AI (setting: Instant shortcuts). */
         val LOCAL_FIRST = setOf(
@@ -606,7 +650,7 @@ class JarvisController(
         val LOCAL_FIRST_SPECIAL = setOf("RUN_ROUTINE", "REPEAT", "BREATHE")
         const val MAX_UTTERANCE = 500
         const val MAX_ROUNDS = 6
-        const val HISTORY_LIMIT = 8
+        const val HISTORY_LIMIT = 6
         const val SUBTITLE_LINGER_MS = 3_000L
         const val NOTICE_MS = 4_500L
         const val ERROR_MS = 6_000L

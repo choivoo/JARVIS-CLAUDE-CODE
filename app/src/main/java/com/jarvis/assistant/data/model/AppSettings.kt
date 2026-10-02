@@ -4,10 +4,40 @@ enum class AiProviderType(
     val label: String,
     val defaultEndpoint: String,
     val defaultModel: String,
+    /** Where to create a key, and a short note about the free allowance (limits change; check the console). */
+    val keyUrl: String,
+    val freeNote: String,
 ) {
-    OPENAI_COMPATIBLE("OpenAI-compatible", "https://api.openai.com/v1", "gpt-4o-mini"),
-    GEMINI("Gemini", "https://generativelanguage.googleapis.com/v1beta", "gemini-2.0-flash"),
-    OLLAMA("Ollama / Local LLM", "http://10.0.2.2:11434", "llama3.1"),
+    GEMINI(
+        "Google Gemini (free)", "https://generativelanguage.googleapis.com/v1beta", "gemini-2.5-flash-lite",
+        "https://aistudio.google.com/apikey",
+        "Free with no credit card. Flash-Lite allows roughly 1,000 requests a day and 30 a minute. Best default.",
+    ),
+    GROQ(
+        "Groq (free)", "https://api.groq.com/openai/v1", "llama-3.1-8b-instant",
+        "https://console.groq.com/keys",
+        "Free and very fast. Has daily request and token caps per model.",
+    ),
+    CEREBRAS(
+        "Cerebras (free)", "https://api.cerebras.ai/v1", "llama3.1-8b",
+        "https://cloud.cerebras.ai/",
+        "Free tier with a generous daily token allowance. Check the console for current limits.",
+    ),
+    OPENROUTER(
+        "OpenRouter (free models)", "https://openrouter.ai/api/v1", "meta-llama/llama-3.3-70b-instruct:free",
+        "https://openrouter.ai/keys",
+        "Models ending in :free cost nothing, but are limited to about 20 requests a minute and 50 a day without credit.",
+    ),
+    OLLAMA(
+        "Ollama / Local LLM", "http://10.0.2.2:11434", "llama3.1",
+        "https://ollama.com/download",
+        "Unlimited and free on your own PC. Use the PC's LAN address in the endpoint.",
+    ),
+    OPENAI_COMPATIBLE(
+        "OpenAI / custom server", "https://api.openai.com/v1", "gpt-4o-mini",
+        "https://platform.openai.com/api-keys",
+        "Any OpenAI-compatible server (OpenAI, LM Studio, vLLM, ...). Paid on OpenAI.",
+    ),
 }
 
 enum class TtsProviderType(
@@ -63,6 +93,7 @@ enum class Gesture(val key: String, val label: String, val default: GestureActio
 
 object SettingKeys {
     const val AI_PROVIDER = "ai.provider"
+    const val AI_FAILOVER = "ai.failover"
     const val TTS_PROVIDER = "tts.provider"
     const val SPEECH_RATE = "tts.rate"
     const val PITCH = "tts.pitch"
@@ -97,9 +128,11 @@ object SettingKeys {
 
 /** Snapshot of every user setting, with the provider specific fields already resolved. */
 data class AppSettings(
-    val aiProvider: AiProviderType = AiProviderType.OPENAI_COMPATIBLE,
-    val aiEndpoint: String = AiProviderType.OPENAI_COMPATIBLE.defaultEndpoint,
-    val aiModel: String = AiProviderType.OPENAI_COMPATIBLE.defaultModel,
+    val aiProvider: AiProviderType = AiProviderType.GEMINI,
+    val aiEndpoint: String = AiProviderType.GEMINI.defaultEndpoint,
+    val aiModel: String = AiProviderType.GEMINI.defaultModel,
+    /** When the main AI hits its free limit, try the other providers that have a key. */
+    val aiFailover: Boolean = true,
     val ttsProvider: TtsProviderType = TtsProviderType.ANDROID,
     val ttsEndpoint: String = "",
     val ttsModel: String = "",
@@ -138,7 +171,7 @@ data class AppSettings(
         fun from(map: Map<String, String>): AppSettings {
             fun enum(key: String) = map[key]
             val ai = AiProviderType.values().firstOrNull { it.name == enum(SettingKeys.AI_PROVIDER) }
-                ?: AiProviderType.OPENAI_COMPATIBLE
+                ?: AiProviderType.GEMINI
             val tts = TtsProviderType.values().firstOrNull { it.name == enum(SettingKeys.TTS_PROVIDER) }
                 ?: TtsProviderType.ANDROID
             fun bool(key: String, default: Boolean) = map[key]?.toBooleanStrictOrNull() ?: default
@@ -146,6 +179,7 @@ data class AppSettings(
                 aiProvider = ai,
                 aiEndpoint = map[SettingKeys.aiEndpoint(ai)]?.takeIf { it.isNotBlank() } ?: ai.defaultEndpoint,
                 aiModel = map[SettingKeys.aiModel(ai)]?.takeIf { it.isNotBlank() } ?: ai.defaultModel,
+                aiFailover = bool(SettingKeys.AI_FAILOVER, true),
                 ttsProvider = tts,
                 ttsEndpoint = map[SettingKeys.ttsEndpoint(tts)]?.takeIf { it.isNotBlank() } ?: tts.defaultEndpoint,
                 ttsModel = map[SettingKeys.ttsModel(tts)]?.takeIf { it.isNotBlank() } ?: tts.defaultModel,

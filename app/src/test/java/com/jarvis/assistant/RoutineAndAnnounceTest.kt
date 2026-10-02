@@ -94,7 +94,7 @@ class RoutineAndAnnounceTest {
 
     private fun controller(commands: List<Command>): JarvisController = JarvisController(
         context = app, scope = bg, settingsRepo = settings, conversations = ConversationRepository(db.conversationDao()),
-        aiProviders = mapOf(AiProviderType.OPENAI_COMPATIBLE to NoAi), recognizer = NoRec, wakeEngine = NoWake,
+        aiProviders = AiProviderType.values().associateWith { NoAi }, recognizer = NoRec, wakeEngine = NoWake,
         speaker = SpeechOutput { spoken += it }, executor = CommandExecutor(CommandRouter(commands)),
         network = NetworkMonitor(app), levels = AudioLevelBus(), routines = RoutineBook(routineRepo), sounds = null,
     )

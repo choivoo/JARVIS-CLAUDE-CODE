@@ -29,7 +29,13 @@ class GeminiProvider : AIProvider {
             .put("contents", contents)
             .put(
                 "generationConfig",
-                JSONObject().put("responseMimeType", "application/json").put("temperature", 0.6),
+                JSONObject().put("responseMimeType", "application/json").put("temperature", 0.6)
+                    .put("maxOutputTokens", 600).also { gen ->
+                        // 2.5 Flash models "think" by default, which burns free quota and adds latency.
+                        if (config.model.contains("2.5") && config.model.contains("flash")) {
+                            gen.put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
+                        }
+                    },
             )
         if (system.isNotEmpty()) {
             payload.put(
