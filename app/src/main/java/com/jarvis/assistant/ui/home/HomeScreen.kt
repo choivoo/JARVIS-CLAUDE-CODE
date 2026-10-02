@@ -70,6 +70,10 @@ import com.jarvis.assistant.ui.components.HudBackground
 import com.jarvis.assistant.ui.components.JarvisCore
 import com.jarvis.assistant.ui.components.MessageCard
 import com.jarvis.assistant.ui.components.MicPermissionPanel
+import com.jarvis.assistant.ui.components.TelemetryBar
+import com.jarvis.assistant.ui.components.TypewriterText
+import com.jarvis.assistant.ui.components.WaveStrip
+import com.jarvis.assistant.ui.components.rememberBattery
 import com.jarvis.assistant.ui.theme.accent
 import com.jarvis.assistant.ui.theme.hudColors
 
@@ -89,7 +93,7 @@ fun HomeScreen(
     cameraGestureActive: Boolean = false,
 ) {
     val colors = hudColors()
-    val accent by animateColorAsState(hud.phase.accent(colors.isLight), tween(450), label = "homeAccent")
+    val accent by animateColorAsState(hud.phase.accent(colors), tween(450), label = "homeAccent")
     var showInput by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
@@ -103,6 +107,8 @@ fun HomeScreen(
                 .padding(horizontal = 18.dp, vertical = 10.dp),
         ) {
             TopBar(hud, accent, cameraGestureActive, onOpenSettings, onOpenHistory, onOpenNotes)
+            val battery by rememberBattery()
+            TelemetryBar(battery, hud.online, Modifier.padding(top = 2.dp))
 
             BoxWithConstraints(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -113,6 +119,7 @@ fun HomeScreen(
                     phase = hud.phase,
                     level = level,
                     modifier = Modifier.size(side * 0.98f),
+                    battery = if (battery.percent >= 0) battery.percent / 100f else -1f,
                 )
                 if (!micGranted) {
                     MicPermissionPanel(onGrant = onRequestMic, modifier = Modifier.align(Alignment.Center))
@@ -120,6 +127,7 @@ fun HomeScreen(
             }
 
             StatusBlock(hud, accent)
+            WaveStrip(hud.phase, level, accent, Modifier.padding(vertical = 2.dp))
             SubtitleArea(hud, accent)
 
             Column(
@@ -209,7 +217,7 @@ private fun TopBar(
                 letterSpacing = 6.sp,
             )
             Text(
-                "AI CORE v1.1" + (if (hud.standby) " · STANDBY" else "") + (if (cameraGestureActive) " · GESTURE CAM" else ""),
+                "AI CORE v1.2" + (if (hud.standby) " · STANDBY" else "") + (if (cameraGestureActive) " · GESTURE CAM" else ""),
                 color = if (hud.standby) accent else colors.textDim,
                 fontSize = 10.sp,
                 fontFamily = FontFamily.Monospace,
@@ -264,13 +272,11 @@ private fun SubtitleArea(hud: HudState, accent: Color) {
     Box(Modifier.fillMaxWidth().heightIn(min = 74.dp), contentAlignment = Alignment.Center) {
         AnimatedVisibility(visible = hud.subtitle != null, enter = fadeIn(tween(200)), exit = fadeOut(tween(700))) {
             GlassPanel(Modifier.fillMaxWidth(), accent = accent) {
-                Text(
-                    hud.subtitle.orEmpty(),
+                TypewriterText(
+                    text = hud.subtitle.orEmpty(),
                     color = colors.text,
                     fontSize = 17.sp,
-                    textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
-                    maxLines = 4,
                 )
             }
         }

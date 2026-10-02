@@ -1,4 +1,4 @@
-# JARVIS V1.1 — Android voice assistant
+# JARVIS V1.2 — Android voice assistant
 
 Korean voice in → AI → calm English voice out, with Korean subtitles on a black futuristic HUD.
 
@@ -9,6 +9,28 @@ Korean voice in → AI → calm English voice out, with Korean subtitles on a bl
 * Kotlin · Jetpack Compose · Room · OkHttp · coroutines · Gradle Kotlin DSL
 * `minSdk 29` (Android 10) · `compileSdk/targetSdk 35`
 * No Google Play Services, no proprietary SDKs
+
+## What's new in 1.2 (official update of 1.0 / 1.1)
+
+* **JARVIS voice** – every sentence passes through a studio-style chain (rumble filter, low-end warmth, presence,
+  gentle compression, a faint digital "double" and a touch of room) with three characters: *JARVIS (AI)*, *Natural*,
+  *Robotic*. It shapes tone only; it does not imitate any real person. Best with a British male system voice
+  (auto-selected) or a steerable cloud voice (OpenAI `gpt-4o-mini-tts` gets a delivery brief).
+* **81 new voice actions** – reminders that survive reboot, to-do and shopping lists, daily counters, calendar
+  reading, calculator, unit and currency conversion, world time, countdowns, stopwatch, news, crypto prices, air
+  quality, UV, sunrise / sunset, 7-day weather, where-am-I, brightness / mute / ringer / per-stream volume, storage /
+  memory / network / battery details, SOS flash, find-my-phone, compass, light, steps, barometer, music search and
+  transport keys, site-specific search (Naver, Wikipedia, images, translate, …), Play Store search, e-mail, dice /
+  coin / random / password, jokes, quotes, facts, a guided breathing session, repeat, echo, help, a real systems
+  check, daily briefing, and **routines** (굿모닝 / 굿나잇 / 외출 / 업무 plus your own).
+* **Change JARVIS by voice** – voice replies, subtitles, auto-listen, sounds, haptics, theme, HUD colour, voice
+  style, speaking speed, wake sensitivity, form of address.
+* **Instant shortcuts** – clear device commands run locally without waiting for the AI.
+* **New HUD** – cut-corner glass panels, scan beam and edge rulers, live telemetry (clock, date, battery, link),
+  battery ring and radar sweep on the core, audio-reactive spectrum strip, typewriter subtitles, richer boot
+  sequence with synthesized chimes, four HUD colour families (Arc blue, Stark gold, Matrix green, Crimson).
+* **Life log** – notes, tasks and reminders tabs. Routine editor in Settings.
+* Updates install over 1.0 / 1.1 (same ID and signing key); the database migrates 1 → 2 → 3 without losing data.
 
 ## What's new in 1.1
 

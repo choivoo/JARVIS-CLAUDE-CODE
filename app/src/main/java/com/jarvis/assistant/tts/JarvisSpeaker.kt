@@ -11,6 +11,7 @@ import com.jarvis.assistant.util.AudioLevelBus
 import com.jarvis.assistant.util.JLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -69,7 +70,7 @@ class JarvisSpeaker(
         val voice = voiceSettings(settings, settings.ttsProvider)
         if (settings.ttsProvider != TtsProviderType.ANDROID) {
             try {
-                return providers.getValue(settings.ttsProvider).synthesize(text, voice)
+                return styled(providers.getValue(settings.ttsProvider).synthesize(text, voice), settings)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TtsException) {
@@ -79,7 +80,7 @@ class JarvisSpeaker(
             }
         }
         return try {
-            android.synthesize(text, voiceSettings(settings, TtsProviderType.ANDROID))
+            styled(android.synthesize(text, voiceSettings(settings, TtsProviderType.ANDROID)), settings)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -87,6 +88,10 @@ class JarvisSpeaker(
             null
         }
     }
+
+    /** Applies the selected voice character off the main thread. */
+    private suspend fun styled(audio: PcmAudio, settings: AppSettings): PcmAudio =
+        withContext(Dispatchers.Default) { VoiceFx.process(audio, settings.voiceStyle) }
 
     private suspend fun fallbackDirect(text: String, settings: AppSettings) {
         try {

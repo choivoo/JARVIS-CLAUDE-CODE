@@ -52,6 +52,34 @@ data class NoteEntity(
     val createdAt: Long,
 )
 
+@Entity(tableName = "tasks")
+data class TaskEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** "todo", "shopping", or any list name. */
+    val listName: String,
+    val text: String,
+    val done: Boolean = false,
+    val createdAt: Long,
+)
+
+@Entity(tableName = "reminders")
+data class ReminderEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val text: String,
+    val triggerAt: Long,
+    val fired: Boolean = false,
+    val createdAt: Long,
+)
+
+@Entity(tableName = "routines")
+data class RoutineEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    /** One natural-language command per line. */
+    val steps: String,
+    val createdAt: Long,
+)
+
 object Role {
     const val USER = "USER"
     const val JARVIS = "JARVIS"

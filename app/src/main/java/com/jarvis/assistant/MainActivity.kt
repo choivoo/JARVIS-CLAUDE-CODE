@@ -49,7 +49,7 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) handleIntent(intent)
         setContent {
             val settings by container.settings.settings.collectAsState()
-            JarvisTheme(settings.theme) {
+            JarvisTheme(settings.theme, settings.accent) {
                 JarvisRoot(container, settings)
             }
         }
@@ -114,6 +114,9 @@ private fun JarvisRoot(container: AppContainer, settings: AppSettings) {
             overlay = Perms.canOverlay(context),
             camera = Perms.hasCamera(context),
             contacts = Perms.hasContacts(context),
+            calendar = Perms.hasCalendar(context),
+            activity = Perms.hasActivityRecognition(context),
+            writeSettings = Perms.canWriteSettings(context),
         )
     }
 
@@ -165,6 +168,8 @@ private fun JarvisRoot(container: AppContainer, settings: AppSettings) {
 
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permTick++ }
     val contactsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permTick++ }
+    val calendarLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permTick++ }
+    val activityLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permTick++ }
 
     LaunchedEffect(pendingAction) {
         when (pendingAction) {
@@ -189,6 +194,13 @@ private fun JarvisRoot(container: AppContainer, settings: AppSettings) {
             },
             requestCamera = { cameraLauncher.launch(Manifest.permission.CAMERA) },
             requestContacts = { contactsLauncher.launch(Manifest.permission.READ_CONTACTS) },
+            requestCalendar = { calendarLauncher.launch(Manifest.permission.READ_CALENDAR) },
+            requestActivity = { activityLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION) },
+            requestWriteSettings = {
+                context.startActivity(
+                    Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:${context.packageName}")),
+                )
+            },
             openAppSettings = {
                 context.startActivity(
                     Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")),
@@ -231,6 +243,9 @@ private fun JarvisRoot(container: AppContainer, settings: AppSettings) {
         onDispose { container.gestures.stopCamera() }
     }
     val notes by container.notes.observeAll().collectAsState(initial = emptyList())
+    val tasks by container.tasks.observeAll().collectAsState(initial = emptyList())
+    val pendingReminders by container.reminders.observePending().collectAsState(initial = emptyList())
+    val routines by container.routineRepo.observeAll().collectAsState(initial = emptyList())
 
     BackHandler(enabled = screen != Screen.HOME) { screen = Screen.HOME }
 
@@ -263,6 +278,9 @@ private fun JarvisRoot(container: AppContainer, settings: AppSettings) {
             permissions = status,
             actions = actions,
             proximityAvailable = container.gestures.proximityAvailable,
+            routines = routines,
+            onSaveRoutine = { n, st -> scope.launch { container.routineRepo.save(n, st) } },
+            onDeleteRoutine = { id -> scope.launch { container.routineRepo.delete(id) } },
             onBack = { screen = Screen.HOME },
         )
         Screen.NOTES -> NotesScreen(
@@ -270,6 +288,14 @@ private fun JarvisRoot(container: AppContainer, settings: AppSettings) {
             onBack = { screen = Screen.HOME },
             onDelete = { id -> scope.launch { container.notes.delete(id) } },
             onClearAll = { scope.launch { container.notes.clear() } },
+            tasks = tasks,
+            reminders = pendingReminders,
+            onToggleTask = { id, done -> scope.launch { container.tasks.setDone(id, done) } },
+            onDeleteTask = { id -> scope.launch { container.tasks.delete(id) } },
+            onCancelReminder = { id ->
+                container.reminderScheduler.cancel(id)
+                scope.launch { container.reminders.delete(id) }
+            },
         )
         Screen.HISTORY -> ConversationScreen(
             messages = messages,

@@ -40,6 +40,13 @@ class OpenAICompatibleTTSProvider : TTSProvider {
             .put("voice", settings.voice)
             .put("response_format", "wav")
             .put("speed", settings.rate.coerceIn(0.25f, 4.0f).toDouble())
+        if (settings.model.startsWith("gpt-4o")) {
+            // Steerable models take a delivery brief.
+            payload.put(
+                "instructions",
+                "Speak as a refined, calm British AI butler: low, warm, unhurried, precise diction, subtle dry wit, never theatrical.",
+            )
+        }
         val builder = Request.Builder()
             .url(settings.endpoint.trimEnd('/') + "/audio/speech")
             .post(payload.toString().toRequestBody("application/json".toMediaType()))

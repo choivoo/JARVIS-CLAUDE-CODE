@@ -24,6 +24,14 @@ enum class TtsProviderType(
 
 enum class ThemeMode(val label: String) { DARK("Dark"), AMOLED("AMOLED"), LIGHT("Light") }
 
+/** Post-processing applied to every synthesized sentence. JARVIS = deep, polished, slightly synthetic. */
+enum class VoiceStyle(val label: String) { NATURAL("Natural"), JARVIS("JARVIS (AI)"), ROBOTIC("Robotic") }
+
+/** HUD colour family. */
+enum class AccentStyle(val label: String) {
+    ARC_BLUE("Arc blue"), STARK_GOLD("Stark gold"), MATRIX_GREEN("Matrix green"), CRIMSON("Crimson")
+}
+
 enum class WakeSensitivity(val label: String) {
     STRICT("Strict"), NORMAL("Normal"), SENSITIVE("Sensitive")
 }
@@ -69,6 +77,11 @@ object SettingKeys {
     const val WEATHER_CITY = "weather.city"
     const val LAST_LAT = "location.lat"
     const val LAST_LON = "location.lon"
+    const val LOCAL_SHORTCUTS = "ai.localShortcuts"
+    const val VOICE_STYLE = "tts.style"
+    const val UI_SOUNDS = "ui.sounds"
+    const val ACCENT = "ui.accent"
+    const val SPEAK_REMINDERS = "reminders.speak"
     const val WAKE_SENSITIVITY = "wake.sensitivity"
     const val WAKE_HAPTIC = "wake.haptic"
     const val USER_TITLE = "user.title"
@@ -106,6 +119,12 @@ data class AppSettings(
     val lastLat: Double? = null,
     val lastLon: Double? = null,
     val wakeSensitivity: WakeSensitivity = WakeSensitivity.NORMAL,
+    val voiceStyle: VoiceStyle = VoiceStyle.JARVIS,
+    /** Run clear-cut device commands locally without waiting for the AI (faster, works offline, no API cost). */
+    val localShortcuts: Boolean = true,
+    val uiSounds: Boolean = true,
+    val accent: AccentStyle = AccentStyle.ARC_BLUE,
+    val speakReminders: Boolean = true,
     val wakeHaptic: Boolean = true,
     /** How JARVIS addresses the user in English speech ("Sir", "Ma'am", a name). */
     val userTitle: String = "Sir",
@@ -147,6 +166,11 @@ data class AppSettings(
                 wakeSensitivity = WakeSensitivity.values().firstOrNull { it.name == enum(SettingKeys.WAKE_SENSITIVITY) }
                     ?: WakeSensitivity.NORMAL,
                 wakeHaptic = bool(SettingKeys.WAKE_HAPTIC, true),
+                voiceStyle = VoiceStyle.values().firstOrNull { it.name == enum(SettingKeys.VOICE_STYLE) } ?: VoiceStyle.JARVIS,
+                uiSounds = bool(SettingKeys.UI_SOUNDS, true),
+                localShortcuts = bool(SettingKeys.LOCAL_SHORTCUTS, true),
+                accent = AccentStyle.values().firstOrNull { it.name == enum(SettingKeys.ACCENT) } ?: AccentStyle.ARC_BLUE,
+                speakReminders = bool(SettingKeys.SPEAK_REMINDERS, true),
                 userTitle = map[SettingKeys.USER_TITLE]?.trim()?.takeIf { it.isNotEmpty() } ?: "Sir",
                 proximityGestures = bool(SettingKeys.PROXIMITY_GESTURES, true),
                 cameraGestures = bool(SettingKeys.CAMERA_GESTURES, false),

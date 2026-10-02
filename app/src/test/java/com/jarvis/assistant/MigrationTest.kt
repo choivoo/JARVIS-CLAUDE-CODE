@@ -31,7 +31,7 @@ class MigrationTest {
             db.version = 1
         }
         val room = Room.databaseBuilder(ctx, JarvisDatabase::class.java, "jarvis-migration.db")
-            .addMigrations(JarvisDatabase.MIGRATION_1_2)
+            .addMigrations(JarvisDatabase.MIGRATION_1_2, JarvisDatabase.MIGRATION_2_3)
             .allowMainThreadQueries()
             .build()
         try {
@@ -39,6 +39,12 @@ class MigrationTest {
             assertEquals("hello", room.conversationDao().recentForConversation(1, 10).single().text)
             room.noteDao().insert(com.jarvis.assistant.data.database.NoteEntity(text = "milk", createdAt = 5))
             assertEquals(listOf("milk"), room.noteDao().latest(5).map { it.text })
+            room.taskDao().insert(com.jarvis.assistant.data.database.TaskEntity(listName = "shopping", text = "eggs", createdAt = 1))
+            assertEquals(listOf("eggs"), room.taskDao().open("shopping").map { it.text })
+            val id = room.reminderDao().insert(com.jarvis.assistant.data.database.ReminderEntity(text = "call", triggerAt = 10, createdAt = 1))
+            assertEquals("call", room.reminderDao().get(id)?.text)
+            room.routineDao().upsert(com.jarvis.assistant.data.database.RoutineEntity(name = "x", steps = "a\nb", createdAt = 1))
+            assertEquals(1, room.routineDao().all().size)
         } finally {
             room.close()
         }

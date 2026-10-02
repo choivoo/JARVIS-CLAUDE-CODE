@@ -25,5 +25,12 @@ object Perms {
 
     fun hasCamera(context: Context) = granted(context, Manifest.permission.CAMERA)
 
+    fun hasCalendar(context: Context) = granted(context, Manifest.permission.READ_CALENDAR)
+
+    fun hasActivityRecognition(context: Context) =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || granted(context, Manifest.permission.ACTIVITY_RECOGNITION)
+
+    fun canWriteSettings(context: Context) = Settings.System.canWrite(context)
+
     fun canOverlay(context: Context) = Settings.canDrawOverlays(context)
 }

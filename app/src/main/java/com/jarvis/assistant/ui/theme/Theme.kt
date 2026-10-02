@@ -8,6 +8,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import com.jarvis.assistant.core.AssistantPhase
+import com.jarvis.assistant.data.model.AccentStyle
 import com.jarvis.assistant.data.model.ThemeMode
 
 /** Palette used by the custom HUD drawing; Material colours are derived from it. */
@@ -20,6 +21,7 @@ data class HudColors(
     val textDim: Color,
     val line: Color,
     val isLight: Boolean,
+    val style: AccentStyle = AccentStyle.ARC_BLUE,
 )
 
 private val DarkHud = HudColors(
@@ -48,23 +50,57 @@ private val LightHud = HudColors(
 
 val LocalHudColors = staticCompositionLocalOf { AmoledHud }
 
-/** Core accent per assistant state (blue / cyan family; amber and red only for action and error). */
-fun AssistantPhase.accent(light: Boolean): Color = when (this) {
-    AssistantPhase.IDLE -> if (light) Color(0xFF0089B0) else Color(0xFF18D8FF)
-    AssistantPhase.LISTENING -> if (light) Color(0xFF00A88A) else Color(0xFF3DFFE0)
-    AssistantPhase.THINKING -> if (light) Color(0xFF2F5BD8) else Color(0xFF5B8CFF)
-    AssistantPhase.SPEAKING -> if (light) Color(0xFF0098C8) else Color(0xFF7DF3FF)
-    AssistantPhase.EXECUTING -> if (light) Color(0xFFC77700) else Color(0xFFFFC857)
-    AssistantPhase.ERROR -> if (light) Color(0xFFC62828) else Color(0xFFFF4D5E)
+/** Per-style colours for the five working states (dark / light variants share hue). */
+private class Palette(
+    val accent: Color, val soft: Color, val listening: Color, val thinking: Color, val speaking: Color, val executing: Color,
+    val error: Color,
+)
+
+private fun palette(style: AccentStyle): Palette = when (style) {
+    AccentStyle.ARC_BLUE -> Palette(
+        Color(0xFF18D8FF), Color(0xFF7DF3FF), Color(0xFF3DFFE0), Color(0xFF5B8CFF), Color(0xFF7DF3FF), Color(0xFFFFC857), Color(0xFFFF4D5E),
+    )
+    AccentStyle.STARK_GOLD -> Palette(
+        Color(0xFFFFB627), Color(0xFFFFE08A), Color(0xFFFFD166), Color(0xFFFF7B3D), Color(0xFFFFE9A8), Color(0xFF4DE1FF), Color(0xFFFF4D5E),
+    )
+    AccentStyle.MATRIX_GREEN -> Palette(
+        Color(0xFF2CFF7A), Color(0xFF9BFFC1), Color(0xFF7DFFB0), Color(0xFF2CD6FF), Color(0xFFB8FFD6), Color(0xFFFFE14D), Color(0xFFFF4D5E),
+    )
+    AccentStyle.CRIMSON -> Palette(
+        Color(0xFFFF3B5C), Color(0xFFFF9AAE), Color(0xFFFF6F8A), Color(0xFFB45BFF), Color(0xFFFFB4C2), Color(0xFFFFC857), Color(0xFFFFA23B),
+    )
+}
+
+private fun Color.forLight(light: Boolean): Color = if (!light) this else
+    Color(red * 0.62f, green * 0.62f, blue * 0.62f, alpha)
+
+/** Core accent per assistant state. */
+fun AssistantPhase.accent(colors: HudColors): Color {
+    val p = palette(colors.style)
+    val c = when (this) {
+        AssistantPhase.IDLE -> p.accent
+        AssistantPhase.LISTENING -> p.listening
+        AssistantPhase.THINKING -> p.thinking
+        AssistantPhase.SPEAKING -> p.speaking
+        AssistantPhase.EXECUTING -> p.executing
+        AssistantPhase.ERROR -> p.error
+    }
+    return c.forLight(colors.isLight)
 }
 
 @Composable
-fun JarvisTheme(mode: ThemeMode, content: @Composable () -> Unit) {
-    val hud = when (mode) {
+fun JarvisTheme(mode: ThemeMode, accentStyle: AccentStyle = AccentStyle.ARC_BLUE, content: @Composable () -> Unit) {
+    val base = when (mode) {
         ThemeMode.DARK -> DarkHud
         ThemeMode.AMOLED -> AmoledHud
         ThemeMode.LIGHT -> LightHud
     }
+    val p = palette(accentStyle)
+    val hud = base.copy(
+        accent = p.accent.forLight(base.isLight),
+        accentSoft = p.soft.forLight(base.isLight),
+        style = accentStyle,
+    )
     val scheme = if (hud.isLight) {
         lightColorScheme(
             primary = hud.accent, onPrimary = Color.White, background = hud.background, onBackground = hud.text,

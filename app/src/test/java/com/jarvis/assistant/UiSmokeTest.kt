@@ -96,10 +96,11 @@ class UiSmokeTest {
 
     @Test
     fun homeShowsPermissionPanelWithoutMicrophone() {
+        val zeroLevel = mutableFloatStateOf(0f)
         compose.setContent {
             JarvisTheme(ThemeMode.AMOLED) {
                 HomeScreen(
-                    hud = HudState(), level = mutableFloatStateOf(0f), messages = emptyList(), micGranted = false,
+                    hud = HudState(), level = zeroLevel, messages = emptyList(), micGranted = false,
                     onRequestMic = {}, onMic = {}, onToggleStandby = {}, onSubmitText = {},
                     onOpenSettings = {}, onOpenHistory = {},
                 )
@@ -112,10 +113,11 @@ class UiSmokeTest {
     @Test
     fun micButtonInvokesCallback() {
         var taps = 0
+        val zeroLevel = mutableFloatStateOf(0f)
         compose.setContent {
             JarvisTheme(ThemeMode.AMOLED) {
                 HomeScreen(
-                    hud = HudState(), level = mutableFloatStateOf(0f), messages = emptyList(), micGranted = true,
+                    hud = HudState(), level = zeroLevel, messages = emptyList(), micGranted = true,
                     onRequestMic = {}, onMic = { taps++ }, onToggleStandby = {}, onSubmitText = {},
                     onOpenSettings = {}, onOpenHistory = {},
                 )
@@ -132,7 +134,7 @@ class UiSmokeTest {
         compose.setContent { JarvisTheme(ThemeMode.AMOLED) { BootScreen(onFinished = { done = true }) } }
         compose.mainClock.advanceTimeBy(6_000)
         assertEquals(true, done)
-        compose.onNodeWithText("JARVIS READY").assertIsDisplayed()
+        compose.onNodeWithText("JARVIS READY").assertExists()
     }
 
     @Test

@@ -16,7 +16,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -33,7 +35,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jarvis.assistant.data.model.AiProviderType
+import com.jarvis.assistant.data.database.RoutineEntity
+import com.jarvis.assistant.data.model.AccentStyle
 import com.jarvis.assistant.data.model.AppSettings
+import com.jarvis.assistant.data.model.VoiceStyle
 import com.jarvis.assistant.data.model.Gesture
 import com.jarvis.assistant.data.model.GestureAction
 import com.jarvis.assistant.data.model.WakeSensitivity
@@ -55,6 +60,9 @@ data class PermissionStatus(
     val overlay: Boolean,
     val camera: Boolean = false,
     val contacts: Boolean = false,
+    val calendar: Boolean = false,
+    val activity: Boolean = false,
+    val writeSettings: Boolean = false,
 )
 
 class PermissionActions(
@@ -65,6 +73,9 @@ class PermissionActions(
     val openAppSettings: () -> Unit,
     val requestCamera: () -> Unit = {},
     val requestContacts: () -> Unit = {},
+    val requestCalendar: () -> Unit = {},
+    val requestActivity: () -> Unit = {},
+    val requestWriteSettings: () -> Unit = {},
 )
 
 @Composable
@@ -75,6 +86,9 @@ fun SettingsScreen(
     permissions: PermissionStatus,
     actions: PermissionActions,
     proximityAvailable: Boolean = true,
+    routines: List<RoutineEntity> = emptyList(),
+    onSaveRoutine: (String, String) -> Unit = { _, _ -> },
+    onDeleteRoutine: (Long) -> Unit = {},
     onBack: () -> Unit,
 ) {
     val colors = hudColors()
@@ -137,6 +151,15 @@ fun SettingsScreen(
                         settings.ttsProvider.label,
                         TtsProviderType.values().map { it.name to it.label },
                     ) { save(SettingKeys.TTS_PROVIDER, it) }
+                    DropdownRow(
+                        "Voice character",
+                        settings.voiceStyle.label,
+                        VoiceStyle.values().map { it.name to it.label },
+                    ) { save(SettingKeys.VOICE_STYLE, it) }
+                    Text(
+                        "JARVIS (AI) adds depth, presence and a faint digital resonance to any voice. Use a British male system voice for the closest result.",
+                        color = colors.textDim, fontSize = 11.sp,
+                    )
                     if (settings.ttsProvider == TtsProviderType.ANDROID) {
                         val options = listOf("" to "Auto (JARVIS profile)") + voices.map { it.id to it.label.take(34) }
                         DropdownRow(
@@ -230,6 +253,11 @@ fun SettingsScreen(
                     SwitchRow("Haptic feedback", "Short vibration when JARVIS wakes or a gesture is recognised", settings.wakeHaptic) {
                         save(SettingKeys.WAKE_HAPTIC, it)
                     }
+                    SwitchRow(
+                        "Instant shortcuts",
+                        "Answer clear commands (time, battery, volume, routines…) locally without waiting for the AI",
+                        settings.localShortcuts,
+                    ) { save(SettingKeys.LOCAL_SHORTCUTS, it) }
                     SwitchRow("Voice Feedback", "Speak answers aloud (off = subtitles only)", settings.voiceFeedback) {
                         save(SettingKeys.VOICE_FEEDBACK, it)
                     }
@@ -289,9 +317,57 @@ fun SettingsScreen(
                         settings.theme.label,
                         ThemeMode.values().map { it.name to it.label },
                     ) { save(SettingKeys.THEME, it) }
+                    DropdownRow(
+                        "HUD colour",
+                        settings.accent.label,
+                        AccentStyle.values().map { it.name to it.label },
+                    ) { save(SettingKeys.ACCENT, it) }
+                    SwitchRow("Interface sounds", "Boot chime, wake tone and error tone", settings.uiSounds) {
+                        save(SettingKeys.UI_SOUNDS, it)
+                    }
+                    SwitchRow("Speak reminders", "Say reminders aloud when they fire", settings.speakReminders) {
+                        save(SettingKeys.SPEAK_REMINDERS, it)
+                    }
                     SwitchRow("Desk Mode", "Keep the screen on while JARVIS is open", settings.keepScreenOn) {
                         save(SettingKeys.KEEP_SCREEN_ON, it)
                     }
+                }
+
+                // ---------------------------------------------------------------- Routines
+                SectionHeader("ROUTINES")
+                SettingsCard {
+                    Text(
+                        "Built in: 굿모닝 · 굿나잇 · 외출 · 업무. Say \"굿모닝 루틴 시작\". Create your own below: one command per line, written as you would say it.",
+                        color = colors.textDim, fontSize = 11.sp,
+                    )
+                    routines.forEach { r ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(r.name, color = colors.text, fontSize = 14.sp)
+                                Text(r.steps.lines().joinToString(" → "), color = colors.textDim, fontSize = 11.sp, maxLines = 2)
+                            }
+                            TextButton(onClick = { onDeleteRoutine(r.id) }) { Text("DELETE", fontSize = 11.sp, color = colors.textDim) }
+                        }
+                    }
+                    var routineName by remember { mutableStateOf("") }
+                    var routineSteps by remember { mutableStateOf("") }
+                    OutlinedTextField(
+                        value = routineName, onValueChange = { routineName = it }, label = { Text("Routine name") },
+                        singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = routineSteps, onValueChange = { routineSteps = it },
+                        label = { Text("Steps (one per line)") }, minLines = 3, modifier = Modifier.fillMaxWidth(),
+                    )
+                    Button(
+                        onClick = {
+                            onSaveRoutine(routineName, routineSteps)
+                            routineName = ""
+                            routineSteps = ""
+                        },
+                        enabled = routineName.isNotBlank() && routineSteps.isNotBlank(),
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = Color.Black),
+                    ) { Text("SAVE ROUTINE", fontSize = 12.sp, letterSpacing = 1.sp) }
                 }
 
                 // ---------------------------------------------------------------- Permissions
@@ -319,6 +395,16 @@ fun SettingsScreen(
                         onGrant = actions.requestContacts,
                     )
                     PermissionRow(
+                        "Calendar", "Optional: \"오늘 일정 알려줘\"", permissions.calendar, onGrant = actions.requestCalendar,
+                    )
+                    PermissionRow(
+                        "Physical activity", "Optional: step count", permissions.activity, onGrant = actions.requestActivity,
+                    )
+                    PermissionRow(
+                        "Modify system settings", "Optional: screen brightness commands", permissions.writeSettings,
+                        "OPEN", actions.requestWriteSettings,
+                    )
+                    PermissionRow(
                         "Blocked a permission?",
                         "Open the system page for JARVIS to change it manually",
                         granted = false,
@@ -329,7 +415,7 @@ fun SettingsScreen(
 
                 SectionHeader("ABOUT")
                 SettingsCard {
-                    Text("JARVIS V1.1 · voice is never recorded or stored; API keys are encrypted in the Android Keystore.", color = colors.textDim, fontSize = 12.sp)
+                    Text("JARVIS V1.2 · voice is never recorded or stored; API keys are encrypted in the Android Keystore.", color = colors.textDim, fontSize = 12.sp)
                 }
             }
         }

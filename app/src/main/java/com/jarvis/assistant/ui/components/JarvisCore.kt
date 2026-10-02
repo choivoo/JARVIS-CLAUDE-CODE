@@ -42,9 +42,11 @@ fun JarvisCore(
     phase: AssistantPhase,
     level: State<Float>,
     modifier: Modifier = Modifier,
+    /** 0..1 battery fraction drawn as the outer ring; negative hides it. */
+    battery: Float = -1f,
 ) {
     val colors = hudColors()
-    val accent by animateColorAsState(phase.accent(colors.isLight), tween(450), label = "coreAccent")
+    val accent by animateColorAsState(phase.accent(colors), tween(450), label = "coreAccent")
     val phaseState = rememberUpdatedState(phase)
     var time by remember { mutableFloatStateOf(0f) }
     val smoothed = remember { floatArrayOf(0f) }
@@ -85,7 +87,7 @@ fun JarvisCore(
             AssistantPhase.ERROR -> 0.2f
         }
         val blink = if (p == AssistantPhase.ERROR) 0.6f + 0.4f * sin(t * 6f) else 1f
-        drawCore(t, amp, speed, blink, accent, colors.accentSoft.takeIf { !colors.isLight } ?: accent, dash)
+        drawCore(t, amp, speed, blink, accent, colors.accentSoft.takeIf { !colors.isLight } ?: accent, dash, battery, p)
     }
 }
 
@@ -97,6 +99,8 @@ private fun DrawScope.drawCore(
     accent: Color,
     soft: Color,
     dash: PathEffect,
+    battery: Float,
+    phase: AssistantPhase,
 ) {
     val c = Offset(size.width / 2f, size.height / 2f)
     val r = min(size.width, size.height) / 2f
@@ -112,6 +116,36 @@ private fun DrawScope.drawCore(
         radius = r,
         center = c,
     )
+
+    // 1b. Radar sweep (slow when idle, fast while thinking / executing)
+    val sweepSpeed = when (phase) {
+        AssistantPhase.THINKING, AssistantPhase.EXECUTING -> 150f
+        AssistantPhase.IDLE -> 28f
+        else -> 55f
+    }
+    rotate(degrees = t * sweepSpeed, pivot = c) {
+        drawCircle(
+            brush = Brush.sweepGradient(
+                0f to Color.Transparent, 0.82f to Color.Transparent, 1f to accent.copy(alpha = 0.30f * blink), center = c,
+            ),
+            radius = r * 0.80f, center = c,
+        )
+    }
+
+    // 1c. Battery ring: dim track plus a bright arc for the charge level
+    if (battery >= 0f) {
+        val bR = r * 0.995f
+        drawArc(
+            color = accent.copy(alpha = 0.12f), startAngle = -90f, sweepAngle = 360f, useCenter = false,
+            topLeft = Offset(c.x - bR, c.y - bR), size = Size(bR * 2, bR * 2), style = Stroke(width = 3f * dp),
+        )
+        drawArc(
+            color = (if (battery < 0.16f) Color(0xFFFF4D5E) else accent).copy(alpha = 0.9f),
+            startAngle = -90f, sweepAngle = 360f * battery.coerceIn(0f, 1f), useCenter = false,
+            topLeft = Offset(c.x - bR, c.y - bR), size = Size(bR * 2, bR * 2),
+            style = Stroke(width = 3f * dp, cap = StrokeCap.Round),
+        )
+    }
 
     // 2. Outer hairline ring
     drawCircle(accent.copy(alpha = 0.40f * blink), radius = r * 0.97f, center = c, style = Stroke(1f * dp))
@@ -211,6 +245,15 @@ private fun DrawScope.drawCore(
             strokeWidth = 1.4f * dp,
             cap = StrokeCap.Round,
         )
+    }
+
+    // 7b. Orbiting nodes on the tick ring
+    for (k in 0 until 3) {
+        val a = Math.toRadians((t * 38f * speed + k * 120f).toDouble())
+        val nr = r * 0.865f
+        val p = Offset(c.x + cos(a).toFloat() * nr, c.y + sin(a).toFloat() * nr)
+        drawCircle(accent.copy(alpha = 0.25f * blink), radius = 7f * dp, center = p)
+        drawCircle(Color.White.copy(alpha = 0.9f * blink), radius = 2.4f * dp, center = p)
     }
 
     // 8. Particles

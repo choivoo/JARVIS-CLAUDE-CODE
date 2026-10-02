@@ -30,6 +30,8 @@ import com.jarvis.assistant.speech.WakeWordEngine
 import com.jarvis.assistant.speech.WakeWordException
 import com.jarvis.assistant.tts.SpeechOutput
 import com.jarvis.assistant.tts.TtsException
+import com.jarvis.assistant.audio.UiSounds
+import com.jarvis.assistant.routine.RoutineBook
 import com.jarvis.assistant.util.AudioLevelBus
 import com.jarvis.assistant.util.Haptics
 import com.jarvis.assistant.util.JLog
@@ -69,6 +71,8 @@ class JarvisController(
     private val executor: CommandExecutor,
     network: NetworkMonitor,
     private val levels: AudioLevelBus,
+    private val routines: RoutineBook? = null,
+    private val sounds: UiSounds? = null,
 ) {
     private val _hud = MutableStateFlow(HudState(online = network.checkNow()))
     val hud: StateFlow<HudState> = _hud
@@ -79,6 +83,8 @@ class JarvisController(
 
     @Volatile
     private var standby = false
+
+    private var lastSpoken: Pair<String, String?>? = null
 
     init {
         scope.launch { network.online.collect { online -> _hud.update { it.copy(online = online) } } }
@@ -143,6 +149,11 @@ class JarvisController(
                 (result.subtitle ?: result.speech)?.let { showNotice(it) }
             }
         }
+    }
+
+    /** Speaks something unprompted (fired reminders, routines). Interrupts whatever is going on. */
+    fun announce(speech: String, subtitle: String?) {
+        schedule { say(speech, subtitle, null) }
     }
 
     fun reportError(message: String) = showError(message)
@@ -219,6 +230,7 @@ class JarvisController(
             transientFailures = 0
             JLog.d("Controller", "Wake word detected")
             if (settings.wakeHaptic) Haptics.tick(context)
+            sounds?.play(UiSounds.Kind.WAKE)
             val inline = detection.trailingText
             if (inline != null) {
                 interaction(inline.take(MAX_UTTERANCE))
@@ -311,6 +323,17 @@ class JarvisController(
 
     private suspend fun obtainReply(userText: String, settings: AppSettings): AiReply {
         val local = LocalIntentParser.parse(userText)
+        if (settings.localShortcuts) {
+            routines?.matchSpoken(userText)?.let { name ->
+                return AiReply("Running your routine.", "루틴을 실행합니다.", AiAction("RUN_ROUTINE", mapOf("name" to name)))
+            }
+        }
+        if (settings.localShortcuts && local != null) {
+            val action = local.action
+            // Only unambiguous device commands that are actually installed skip the AI round trip.
+            if (action != null && action.type.uppercase() in LOCAL_FIRST && executor.resolve(action) != null) return local
+            if (action != null && action.type.uppercase() in LOCAL_FIRST_SPECIAL) return local
+        }
         val config = AiConfig(
             provider = settings.aiProvider,
             endpoint = settings.aiEndpoint,
@@ -408,6 +431,23 @@ class JarvisController(
             say(reply.speech, reply.subtitle, null)
             return
         }
+        when (action.type.trim().uppercase()) {
+            "RUN_ROUTINE", "ROUTINE" -> {
+                runRoutine(action.param("name") ?: action.param("routine") ?: "")
+                return
+            }
+            "BREATHE", "BREATHING", "MEDITATE" -> {
+                say(reply.speech, reply.subtitle, null)
+                breathe()
+                return
+            }
+            "REPEAT", "REPEAT_LAST", "SAY_AGAIN" -> {
+                val last = lastSpoken
+                if (last != null) say(last.first, last.second, null)
+                else say("I haven't said anything yet.", "아직 말씀드린 내용이 없습니다.", null)
+                return
+            }
+        }
         val command = executor.resolve(action)
         if (command == null) {
             JLog.w("Controller", "Unsupported action type requested: ${action.type.take(40)}")
@@ -450,6 +490,7 @@ class JarvisController(
         if (speech.isBlank() && subtitle.isNullOrBlank()) return
         val settings = settingsRepo.current()
         val sub = subtitle?.takeIf { it.isNotBlank() }
+        if (persistMessage) lastSpoken = speech to sub
         if (persistMessage) {
             persist { conversations.addMessage(Role.JARVIS, speech, sub, action?.toJson()?.toString()) }
         }
@@ -476,6 +517,36 @@ class JarvisController(
         }
     }
 
+    private suspend fun runRoutine(name: String) {
+        val book = routines
+        val routine = book?.find(name)
+        if (routine == null) {
+            say("I don't have a routine by that name.", "해당 루틴을 찾을 수 없습니다.", null)
+            return
+        }
+        routine.intro?.let { say(it.first, it.second, null) }
+        for (step in routine.steps) {
+            val action = LocalIntentParser.parse(step)?.action ?: continue
+            _hud.update { it.copy(phase = AssistantPhase.EXECUTING) }
+            val result = executor.execute(action)
+            result.speech?.let { say(it, result.subtitle, null) }
+        }
+        routine.outro?.let { say(it.first, it.second, null) }
+    }
+
+    /** Guided 4-4-6 breathing: spoken cues with real pauses between them. */
+    private suspend fun breathe() {
+        repeat(3) { round ->
+            say(if (round == 0) "Breathe in." else "In.", "숨을 들이쉬세요.", null)
+            delay(3_500)
+            say("Hold.", "멈추세요.", null)
+            delay(3_000)
+            say("And out, slowly.", "천천히 내쉬세요.", null)
+            delay(5_000)
+        }
+        say("Well done. Your heart rate should be settling.", "수고하셨습니다. 마음이 한결 편안해지셨을 겁니다.", null)
+    }
+
     private fun readingTimeMs(text: String) = (1_200L + text.length * 70L).coerceAtMost(7_000L)
 
     // ------------------------------------------------------------------ notices
@@ -500,6 +571,7 @@ class JarvisController(
     }
 
     private fun showError(message: String) {
+        sounds?.play(UiSounds.Kind.ERROR)
         noticeJob?.cancel()
         levels.set(0f)
         _hud.update { it.copy(phase = AssistantPhase.ERROR, notice = message, partial = "") }
@@ -517,6 +589,21 @@ class JarvisController(
 
     private companion object {
         const val AI_TIMEOUT_MS = 40_000L
+
+        /** Deterministic commands answered instantly without the AI (setting: Instant shortcuts). */
+        val LOCAL_FIRST = setOf(
+            "GET_TIME", "GET_DATE", "GET_BATTERY", "BATTERY_DETAIL", "FLASHLIGHT_ON", "FLASHLIGHT_OFF", "FLASHLIGHT_SOS",
+            "VOLUME_UP", "VOLUME_DOWN", "SET_VOLUME", "MUTE", "UNMUTE", "BRIGHTNESS_UP", "BRIGHTNESS_DOWN", "BRIGHTNESS_SET",
+            "RINGER_NORMAL", "RINGER_VIBRATE", "RINGER_SILENT", "MUSIC_PLAY", "MUSIC_PAUSE", "MUSIC_NEXT", "MUSIC_PREVIOUS",
+            "MUSIC_STOP", "MUSIC_FORWARD", "MUSIC_REWIND", "SET_TIMER", "SET_ALARM", "STOPWATCH_START", "STOPWATCH_STOP",
+            "STOPWATCH_LAP", "STOPWATCH_RESET", "STOPWATCH_STATUS", "ROLL_DICE", "FLIP_COIN", "TELL_JOKE", "QUOTE", "FUN_FACT",
+            "CALCULATE", "STORAGE_INFO", "MEMORY_INFO", "DEVICE_INFO", "NETWORK_INFO", "UPTIME", "STATUS_REPORT", "HELP",
+            "AMBIENT_LIGHT", "COMPASS", "STEP_COUNT", "ALTITUDE", "FIND_PHONE", "STOP_FIND_PHONE", "REMINDER_LIST",
+            "REMINDER_CANCEL", "SHOW_ALARMS", "ROUTINE_LIST", "DAILY_BRIEFING", "COUNTER_ADD", "COUNTER_GET",
+        )
+
+        /** Handled inside the controller itself, so no installed Command is required. */
+        val LOCAL_FIRST_SPECIAL = setOf("RUN_ROUTINE", "REPEAT", "BREATHE")
         const val MAX_UTTERANCE = 500
         const val MAX_ROUNDS = 6
         const val HISTORY_LIMIT = 8

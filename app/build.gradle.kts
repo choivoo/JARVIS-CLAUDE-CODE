@@ -13,8 +13,8 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 29
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
     }
 
     // One fixed key for every build (local and CI) so a newer APK installs over an older one as an update.

@@ -5,7 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -24,7 +24,7 @@ fun GlassPanel(
     val colors = hudColors()
     val fillTop = if (colors.isLight) Color.White.copy(alpha = 0.75f) else Color.White.copy(alpha = 0.07f)
     val fillBottom = if (colors.isLight) Color.White.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.02f)
-    val shape = RoundedCornerShape(16.dp)
+    val shape = CutCornerShape(topStart = 14.dp, topEnd = 3.dp, bottomEnd = 14.dp, bottomStart = 3.dp)
     Box(
         modifier = modifier
             .background(Brush.verticalGradient(listOf(fillTop, fillBottom)), shape)

@@ -24,6 +24,8 @@ class SettingsRepository(
     suspend fun current(): AppSettings =
         AppSettings.from(dao.getAll().associate { it.key to it.value })
 
+    suspend fun getRaw(key: String): String? = dao.getValue(key)
+
     suspend fun put(key: String, value: String) = dao.put(SettingsEntity(key, value))
 
     suspend fun put(key: String, value: Boolean) = put(key, value.toString())

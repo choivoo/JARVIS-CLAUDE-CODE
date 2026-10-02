@@ -29,6 +29,10 @@ interface WeatherProvider {
     @Throws(WeatherException::class)
     suspend fun forCity(city: String): WeatherReport
 
+    /** Resolves a place name to coordinates. */
+    @Throws(WeatherException::class)
+    suspend fun locate(city: String): GeoPoint
+
     @Throws(WeatherException::class)
     suspend fun forPoint(lat: Double, lon: Double, label: String): WeatherReport
 }

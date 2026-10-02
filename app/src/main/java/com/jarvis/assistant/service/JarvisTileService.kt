@@ -27,6 +27,7 @@ class JarvisTileService : TileService() {
             )
         } else {
             @Suppress("DEPRECATION")
+            @android.annotation.SuppressLint("StartActivityAndCollapseDeprecated")
             startActivityAndCollapse(intent)
         }
     }

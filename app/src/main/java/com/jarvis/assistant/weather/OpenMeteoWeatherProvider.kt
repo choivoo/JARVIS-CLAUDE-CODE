@@ -14,6 +14,11 @@ import java.io.IOException
 class OpenMeteoWeatherProvider : WeatherProvider {
 
     override suspend fun forCity(city: String): WeatherReport {
+        val point = locate(city)
+        return forPoint(point.lat, point.lon, point.label)
+    }
+
+    override suspend fun locate(city: String): GeoPoint {
         val url = "https://geocoding-api.open-meteo.com/v1/search".toHttpUrl().newBuilder()
             .addQueryParameter("name", normalizeCity(city))
             .addQueryParameter("count", "1")
@@ -23,7 +28,7 @@ class OpenMeteoWeatherProvider : WeatherProvider {
         try {
             val hit = JSONObject(body).optJSONArray("results")?.optJSONObject(0)
                 ?: throw WeatherException(WeatherException.Kind.NOT_FOUND, "Unknown city")
-            return forPoint(hit.getDouble("latitude"), hit.getDouble("longitude"), hit.optString("name", city))
+            return GeoPoint(hit.getDouble("latitude"), hit.getDouble("longitude"), hit.optString("name", city))
         } catch (e: JSONException) {
             throw WeatherException(WeatherException.Kind.BAD_RESPONSE, "Bad geocoding response")
         }
@@ -78,7 +83,7 @@ class OpenMeteoWeatherProvider : WeatherProvider {
         )
     }
 
-    private suspend fun get(url: String): String = withContext(Dispatchers.IO) {
+    internal suspend fun get(url: String): String = withContext(Dispatchers.IO) {
         try {
             Http.client.await(Request.Builder().url(url).header("User-Agent", "JARVIS-Android/1.0").build())
                 .use { response ->
