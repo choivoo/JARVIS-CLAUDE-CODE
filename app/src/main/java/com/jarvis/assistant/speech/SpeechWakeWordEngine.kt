@@ -1,6 +1,7 @@
 package com.jarvis.assistant.speech
 
 import android.content.Context
+import com.jarvis.assistant.data.model.WakeMode
 import com.jarvis.assistant.data.model.WakeSensitivity
 import com.jarvis.assistant.util.JLog
 import com.jarvis.assistant.util.Perms
@@ -17,7 +18,7 @@ class SpeechWakeWordEngine(
 ) : WakeWordEngine {
     override val name = "SpeechRecognizer wake word"
 
-    override suspend fun awaitWake(languageTag: String, sensitivity: WakeSensitivity): WakeDetection {
+    override suspend fun awaitWake(languageTag: String, sensitivity: WakeSensitivity, mode: WakeMode): WakeDetection {
         if (!Perms.hasMic(context)) throw WakeWordException(WakeError.PERMISSION, "Microphone permission missing")
         if (!recognizer.isAvailable()) throw WakeWordException(WakeError.UNAVAILABLE, "No speech recognition service")
 
@@ -39,7 +40,7 @@ class SpeechWakeWordEngine(
                 is SttResult.Text -> {
                     consecutiveFailures = 0
                     backoff = 300L
-                    WakeWordMatcher.match(result.alternatives, sensitivity)?.let { return it }
+                    WakeWordMatcher.match(result.alternatives, sensitivity, mode)?.let { return it }
                 }
                 SttResult.NoSpeech -> {
                     consecutiveFailures = 0

@@ -39,6 +39,7 @@ class JarvisForegroundService : Service() {
     private var observer: Job? = null
     private var started = false
     private var gesturesHeld = false
+    private var wakeLock: android.os.PowerManager.WakeLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -82,6 +83,7 @@ class JarvisForegroundService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        acquireStandbyWakeLock()
         if (!controller.startStandby()) {
             shutDown()
             return START_NOT_STICKY
@@ -147,6 +149,31 @@ class JarvisForegroundService : Service() {
             .build()
     }
 
+    /** Keeps the CPU running so listening continues with the screen off (visible in the notification). */
+    private fun acquireStandbyWakeLock() {
+        scope.launch {
+            if (!container.settings.current().keepAwakeStandby) return@launch
+            if (wakeLock?.isHeld == true) return@launch
+            try {
+                val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+                wakeLock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "JARVIS:standby").apply {
+                    setReferenceCounted(false)
+                    acquire()
+                }
+            } catch (e: Exception) {
+                JLog.w("Service", "Could not hold the standby wake lock", e)
+            }
+        }
+    }
+
+    private fun releaseWakeLock() {
+        try {
+            wakeLock?.takeIf { it.isHeld }?.release()
+        } catch (_: Exception) {
+        }
+        wakeLock = null
+    }
+
     private fun releaseGestures() {
         if (gesturesHeld) {
             gesturesHeld = false
@@ -158,12 +185,14 @@ class JarvisForegroundService : Service() {
         observer?.cancel()
         started = false
         releaseGestures()
+        releaseWakeLock()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
     override fun onDestroy() {
         releaseGestures()
+        releaseWakeLock()
         container.controller.stopStandby()
         scope.cancel()
         super.onDestroy()

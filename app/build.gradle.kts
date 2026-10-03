@@ -13,8 +13,10 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 29
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.2.1"
+        // Hand tracking ships native code; keep the APK to the ABIs real phones use.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+        versionCode = 5
+        versionName = "1.3.0"
     }
 
     // One fixed key for every build (local and CI) so a newer APK installs over an older one as an update.
@@ -80,6 +82,7 @@ dependencies {
     implementation(libs.androidx.camera.core)
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.mediapipe.tasks.vision)
 
     implementation(libs.okhttp)
     implementation(libs.kotlinx.coroutines.android)

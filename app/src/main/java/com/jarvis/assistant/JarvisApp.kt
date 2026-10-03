@@ -4,6 +4,11 @@ import android.app.Application
 import android.content.Context
 import com.jarvis.assistant.ai.AIProvider
 import com.jarvis.assistant.audio.UiSounds
+import com.jarvis.assistant.calendar.CalendarReader
+import com.jarvis.assistant.holo.HoloDataHub
+import com.jarvis.assistant.holo.HoloPanel
+import com.jarvis.assistant.holo.HologramController
+import com.jarvis.assistant.holo.WindowCommand
 import com.jarvis.assistant.command.commands.AltitudeCommand
 import com.jarvis.assistant.command.commands.AmbientLightCommand
 import com.jarvis.assistant.command.commands.AppSettingsCommand
@@ -126,6 +131,7 @@ import com.jarvis.assistant.weather.OpenMeteoWeatherProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class JarvisApp : Application() {
     lateinit var container: AppContainer
@@ -192,7 +198,11 @@ class AppContainer(app: Application) {
     private val envProvider = EnvironmentProvider()
     private val stopwatch = com.jarvis.assistant.tools.StopwatchEngine()
     private val routineBook = RoutineBook(routineRepo)
+    private val calendarReader = CalendarReader(app)
+    val holo = HologramController(appScope, settings)
+    val holoData = HoloDataHub(app, appScope, weatherProvider, places, envProvider, tasks, notes, reminders, calendarReader)
     val uiSounds = UiSounds(settings, appScope)
+    private val screenWaker = com.jarvis.assistant.power.ScreenWaker(app, visibility)
 
     private val commandList = run {
         listOf(
@@ -236,6 +246,7 @@ class AppContainer(app: Application) {
             HelpCommand(), EchoCommand(), JarvisSettingCommand(settings), RoutineListCommand(routineRepo),
             StatusReportCommand(app, settings, network, recognizer) { router.supportedTypes.size },
             BriefingCommand { router },
+            WindowCommand(holo, holoData),
         )
     }
     init {
@@ -257,6 +268,35 @@ class AppContainer(app: Application) {
         levels = levels,
         routines = routineBook,
         sounds = uiSounds,
+        screenWaker = screenWaker,
+        contextProvider = { pointerContext() },
     )
     val gestures = GestureManager(app, settings, controller, appScope)
+
+    init {
+        holo.onRefresh = holoData::refresh
+        holo.onAction = { panel, id ->
+            appScope.launch {
+                if (panel == HoloPanel.MUSIC) {
+                    val audio = app.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+                    val type = when (id) {
+                        "prev" -> "MUSIC_PREVIOUS"
+                        "next" -> "MUSIC_NEXT"
+                        else -> if (audio.isMusicActive) "MUSIC_PAUSE" else "MUSIC_PLAY"
+                    }
+                    executor.execute(com.jarvis.assistant.ai.AiAction(type))
+                    kotlinx.coroutines.delay(700)
+                    holoData.refresh(HoloPanel.MUSIC)
+                }
+            }
+        }
+    }
+
+    /** What the user is pointing at, for the AI ("이거 정리해줘"). */
+    fun pointerContext(): String? {
+        val st = holo.state.value
+        val panel = st.target ?: return null
+        if (!st.visible) return null
+        return "The user is pointing at the ${panel.title} hologram window. " + holoData.contentOf(panel).forAi(panel)
+    }
 }

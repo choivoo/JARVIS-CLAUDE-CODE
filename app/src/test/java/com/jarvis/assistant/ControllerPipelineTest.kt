@@ -78,7 +78,7 @@ private class FakeRecognizer(vararg results: SttResult) : SpeechRecognizerEngine
 private class FakeWake(private val detection: WakeDetection) : WakeWordEngine {
     override val name = "fake"
     private var fired = false
-    override suspend fun awaitWake(languageTag: String, sensitivity: com.jarvis.assistant.data.model.WakeSensitivity): WakeDetection {
+    override suspend fun awaitWake(languageTag: String, sensitivity: com.jarvis.assistant.data.model.WakeSensitivity, mode: com.jarvis.assistant.data.model.WakeMode): WakeDetection {
         if (!fired) {
             fired = true
             return detection

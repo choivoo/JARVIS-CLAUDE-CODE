@@ -32,5 +32,9 @@ object Perms {
 
     fun canWriteSettings(context: Context) = Settings.System.canWrite(context)
 
+    fun ignoresBatteryOptimizations(context: Context) =
+        (context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager)
+            .isIgnoringBatteryOptimizations(context.packageName)
+
     fun canOverlay(context: Context) = Settings.canDrawOverlays(context)
 }

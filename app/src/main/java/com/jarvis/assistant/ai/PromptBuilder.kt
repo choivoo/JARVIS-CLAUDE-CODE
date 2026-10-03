@@ -76,6 +76,14 @@ object PromptBuilder {
 """.trim(),
         ),
         Group(
+            "window", Regex("창|홀로그램|여기|이거|이것|저거|이 |window|hologram|here|this one|move it|enlarge|close it"),
+            """
+- HOLOGRAM_OPEN {"count": 4-11}  HOLOGRAM_CLOSE  WINDOW_OPEN {"panel": weather|air|calendar|tasks|notes|reminders|system|news|market|music|clock}
+- WINDOW_CLOSE {"panel": optional, default = the window the user points at}  WINDOW_CLOSE_ALL  WINDOW_ARRANGE  WINDOW_MAXIMIZE  WINDOW_RESTORE  WINDOW_MOVE_HERE  WINDOW_REFRESH
+- If the request contains [SCREEN CONTEXT: ...], "this / here / 이거 / 여기" means that window: answer about its content, or act on it.
+""".trim(),
+        ),
+        Group(
             "meta", Regex("설정|바꿔|호흡|명상|농담|명언|도움|다시 말|따라|테마|색|목소리|자막|속도|호칭|부르|웃긴|사실|운세|joke|quote|fact|breathe|help|repeat|say|theme|voice|subtitle|speed|call me"),
             """
 - BREATHE  REPEAT  SAY {"text": "english"}  HELP  TELL_JOKE  QUOTE  FUN_FACT  ASK_8BALL
@@ -107,6 +115,7 @@ $catalog
 
 RULES
 - Chat, jokes, opinions, translations, explanations: action null.
+- A [SCREEN CONTEXT: ...] note describes what the user is pointing at; use it to resolve "this" / "이거".
 - For data actions (WEATHER, WEB_ANSWER, GET_TIME, NEWS, ...) speech is a short acknowledgement; the result is delivered afterwards. Never invent data.
 - Packages: YouTube com.google.android.youtube, YouTube Music com.google.android.apps.youtube.music, Chrome com.android.chrome, Maps com.google.android.apps.maps, Gmail com.google.android.gm, KakaoTalk com.kakao.talk; otherwise give only "app".
 - "Tomorrow" alarms use the clock time; say tomorrow in speech.

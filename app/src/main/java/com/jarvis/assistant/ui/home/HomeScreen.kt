@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -90,7 +91,10 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenNotes: () -> Unit = {},
+    onOpenHolo: () -> Unit = {},
     cameraGestureActive: Boolean = false,
+    /** True over the lock screen: private content is hidden. */
+    locked: Boolean = false,
 ) {
     val colors = hudColors()
     val accent by animateColorAsState(hud.phase.accent(colors), tween(450), label = "homeAccent")
@@ -106,7 +110,7 @@ fun HomeScreen(
                 .imePadding()
                 .padding(horizontal = 18.dp, vertical = 10.dp),
         ) {
-            TopBar(hud, accent, cameraGestureActive, onOpenSettings, onOpenHistory, onOpenNotes)
+            TopBar(hud, accent, cameraGestureActive, locked, onOpenSettings, onOpenHistory, onOpenNotes, onOpenHolo)
             val battery by rememberBattery()
             TelemetryBar(battery, hud.online, Modifier.padding(top = 2.dp))
 
@@ -134,10 +138,10 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                messages.take(2).reversed().forEach { MessageCard(it) }
+                if (!locked) messages.take(2).reversed().forEach { MessageCard(it) }
             }
 
-            QuickChips(accent, onSubmitText)
+            if (!locked) QuickChips(accent, onSubmitText)
 
             AnimatedVisibility(
                 visible = showInput,
@@ -202,9 +206,11 @@ private fun TopBar(
     hud: HudState,
     accent: Color,
     cameraGestureActive: Boolean,
+    locked: Boolean,
     onOpenSettings: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenNotes: () -> Unit,
+    onOpenHolo: () -> Unit,
 ) {
     val colors = hudColors()
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -217,21 +223,28 @@ private fun TopBar(
                 letterSpacing = 6.sp,
             )
             Text(
-                "AI CORE v1.2" + (if (hud.standby) " · STANDBY" else "") + (if (cameraGestureActive) " · GESTURE CAM" else ""),
+                "AI CORE v1.3" + (if (hud.standby) " · STANDBY" else "") + (if (cameraGestureActive) " · GESTURE CAM" else ""),
                 color = if (hud.standby) accent else colors.textDim,
                 fontSize = 10.sp,
                 fontFamily = FontFamily.Monospace,
                 letterSpacing = 2.sp,
             )
         }
-        IconButton(onClick = onOpenNotes) {
-            Icon(Icons.Filled.EditNote, contentDescription = "Notes", tint = colors.textDim)
-        }
-        IconButton(onClick = onOpenHistory) {
-            Icon(Icons.Filled.History, contentDescription = "Memory log", tint = colors.textDim)
-        }
-        IconButton(onClick = onOpenSettings) {
-            Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = colors.textDim)
+        if (locked) {
+            Text("LOCKED", color = colors.textDim, fontSize = 10.sp, fontFamily = FontFamily.Monospace, letterSpacing = 2.sp)
+        } else {
+            IconButton(onClick = onOpenHolo) {
+                Icon(Icons.Filled.ViewInAr, contentDescription = "Hologram", tint = accent)
+            }
+            IconButton(onClick = onOpenNotes) {
+                Icon(Icons.Filled.EditNote, contentDescription = "Notes", tint = colors.textDim)
+            }
+            IconButton(onClick = onOpenHistory) {
+                Icon(Icons.Filled.History, contentDescription = "Memory log", tint = colors.textDim)
+            }
+            IconButton(onClick = onOpenSettings) {
+                Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = colors.textDim)
+            }
         }
     }
 }

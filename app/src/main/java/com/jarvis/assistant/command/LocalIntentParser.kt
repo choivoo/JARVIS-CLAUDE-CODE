@@ -197,6 +197,27 @@ object LocalIntentParser {
     private fun parseV12(t: String): AiReply? {
         fun has(r: String) = Regex(r, RegexOption.IGNORE_CASE).containsMatchIn(t)
 
+        // holographic windows
+        if (has("홀로그램|hologram")) {
+            if (has("꺼|닫|종료|끄")) return act("Closing the display.", "홀로그램을 닫습니다.", "HOLOGRAM_CLOSE")
+            if (has("켜|열|띄|보여|시작|on")) return act("Projecting.", "홀로그램을 띄웁니다.", "HOLOGRAM_OPEN")
+        }
+        if (has("창 (전부|모두) (닫|꺼)|모든 창 (닫|꺼)")) return act("Closing everything.", "모든 창을 닫습니다.", "WINDOW_CLOSE_ALL")
+        if (has("창 (정리|정렬)|창들 정리")) return act("Tidying up.", "창을 정리합니다.", "WINDOW_ARRANGE")
+        if (has("(이거|이 창|이것|저거).*(닫|꺼|끄)")) return act("Closing it.", "창을 닫습니다.", "WINDOW_CLOSE")
+        if (has("(이거|이 창|이것).*(크게|확대|키워)")) return act("Enlarging.", "창을 키웁니다.", "WINDOW_MAXIMIZE")
+        if (has("(이거|이 창|이것).*(작게|원래|되돌려|줄여)")) return act("Restoring.", "창을 원래대로 돌립니다.", "WINDOW_RESTORE")
+        if (has("(여기로|여기에|이쪽으로).*(옮겨|놔|놓아|이동)|(옮겨|이동).*(여기|이쪽)")) return act("Moving it.", "창을 옮깁니다.", "WINDOW_MOVE_HERE")
+        if (has("(이거|이 창|이것).*(새로고침|갱신|다시 불러)")) return act("Refreshing.", "창을 새로고침합니다.", "WINDOW_REFRESH")
+        Regex("(.+?)\\s*창\\s*(?:을|를)?\\s*(열어|띄워|보여|켜)").find(t)?.let {
+            val name = it.groupValues[1].trim()
+            if (com.jarvis.assistant.holo.HoloPanel.fromSpoken(name) != null) return act("Opening it.", "창을 엽니다.", "WINDOW_OPEN", "panel" to name)
+        }
+        Regex("(.+?)\\s*창\\s*(?:을|를)?\\s*(닫아|꺼|끄)").find(t)?.let {
+            val name = it.groupValues[1].trim()
+            if (com.jarvis.assistant.holo.HoloPanel.fromSpoken(name) != null) return act("Closing it.", "창을 닫습니다.", "WINDOW_CLOSE", "panel" to name)
+        }
+
         // calculator: "3 더하기 5", "20% of 50", "12 곱하기 8 계산해줘"
         if (has("계산|더하기|빼기|곱하기|나누기|제곱근|루트") || Regex("\\d+\\s*[+\\-*/x×÷]\\s*\\d+").containsMatchIn(t)) {
             val expr = t.replace(Regex("계산해줘|계산해|얼마야|얼마|는|은|\\?|\\.|해줘|알려줘"), "").trim()

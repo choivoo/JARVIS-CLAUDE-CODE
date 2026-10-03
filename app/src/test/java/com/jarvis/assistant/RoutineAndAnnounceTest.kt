@@ -76,7 +76,7 @@ class RoutineAndAnnounceTest {
 
     private object NoWake : WakeWordEngine {
         override val name = "none"
-        override suspend fun awaitWake(languageTag: String, sensitivity: com.jarvis.assistant.data.model.WakeSensitivity): WakeDetection =
+        override suspend fun awaitWake(languageTag: String, sensitivity: com.jarvis.assistant.data.model.WakeSensitivity, mode: com.jarvis.assistant.data.model.WakeMode): WakeDetection =
             awaitCancellation()
     }
 

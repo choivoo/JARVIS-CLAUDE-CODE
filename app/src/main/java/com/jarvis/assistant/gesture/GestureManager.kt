@@ -19,7 +19,9 @@ import com.jarvis.assistant.util.Perms
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -43,6 +45,9 @@ class GestureManager(
         sensors.getDefaultSensor(Sensor.TYPE_PROXIMITY, true) ?: sensors.getDefaultSensor(Sensor.TYPE_PROXIMITY)
     private val waveDetector = ProximityWaveDetector()
     private val camera = CameraGestureSource(context) { swipe -> fire(swipe.toGesture()) }
+    private val engine = HandGestureEngine()
+    private val handTracker = HandTrackerSource(context, engine) { events -> handleHandEvents(events) }
+    private var usingFallback = false
 
     private var users = 0
     private var registered = false
@@ -53,6 +58,63 @@ class GestureManager(
     val cameraActive: StateFlow<Boolean> = _cameraActive
 
     val proximityAvailable: Boolean get() = proximity != null
+
+    // ---- pointer state for the hologram workspace --------------------------------------------
+    data class Pointer(
+        val visible: Boolean = false,
+        val x: Float = 0.5f,
+        val y: Float = 0.5f,
+        val pose: HandPose = HandPose.UNKNOWN,
+        val pinching: Boolean = false,
+        val dwell: Float = 0f,
+    )
+
+    sealed interface PointerEvent {
+        data class Down(val x: Float, val y: Float) : PointerEvent
+        data class Up(val x: Float, val y: Float) : PointerEvent
+        data class Click(val x: Float, val y: Float) : PointerEvent
+    }
+
+    private val _pointer = MutableStateFlow(Pointer())
+    val pointer: StateFlow<Pointer> = _pointer
+
+    private val _pointerEvents = MutableSharedFlow<PointerEvent>(extraBufferCapacity = 16)
+    val pointerEvents: SharedFlow<PointerEvent> = _pointerEvents
+
+    private val _trackingEngine = MutableStateFlow("")
+    /** "MediaPipe hand tracking", "Motion fallback" or empty when the camera is off. */
+    val trackingEngine: StateFlow<String> = _trackingEngine
+
+    /** While true (hologram screen open) swipes and poses drive the pointer UI instead of global actions. */
+    @Volatile
+    var pointerMode: Boolean = false
+
+    private fun handleHandEvents(events: List<HandEvent>) {
+        for (e in events) {
+            when (e) {
+                is HandEvent.Cursor -> _pointer.value = Pointer(true, e.x, e.y, e.pose, e.pinching, e.dwell)
+                is HandEvent.PinchDown -> _pointerEvents.tryEmit(PointerEvent.Down(e.x, e.y))
+                is HandEvent.PinchUp -> {
+                    _pointerEvents.tryEmit(PointerEvent.Up(e.x, e.y))
+                    _pointerEvents.tryEmit(PointerEvent.Click(e.x, e.y))
+                }
+                is HandEvent.DwellClick -> {
+                    _pointerEvents.tryEmit(PointerEvent.Down(e.x, e.y))
+                    _pointerEvents.tryEmit(PointerEvent.Up(e.x, e.y))
+                    _pointerEvents.tryEmit(PointerEvent.Click(e.x, e.y))
+                }
+                is HandEvent.SwipeEvent -> if (!pointerMode) fire(e.direction.toGesture())
+                is HandEvent.PoseHold -> when (e.pose) {
+                    HandPose.OPEN_PALM -> fire(Gesture.PALM_HOLD)
+                    HandPose.FIST -> if (!pointerMode) fire(Gesture.FIST_HOLD)
+                    HandPose.VICTORY -> fire(Gesture.VICTORY_HOLD)
+                    HandPose.THUMBS_UP -> if (!pointerMode) fire(Gesture.THUMBS_UP_HOLD)
+                    else -> Unit
+                }
+                HandEvent.Lost -> _pointer.value = Pointer(visible = false)
+            }
+        }
+    }
 
     init {
         scope.launch {
@@ -108,14 +170,37 @@ class GestureManager(
 
     // ------------------------------------------------------------------ camera
 
-    /** Starts camera swipe detection bound to [owner]'s lifecycle. Needs CAMERA permission. */
+    /** Starts hand tracking bound to [owner]'s lifecycle. Needs CAMERA permission. */
     fun startCamera(owner: LifecycleOwner) {
         if (!Perms.hasCamera(context)) return
-        camera.start(owner) { active -> _cameraActive.value = active }
+        val s = settingsRepo.settings.value
+        engine.config = HandConfig(
+            pinchOn = 0.22f + 0.2f * s.pinchSensitivity,
+            pinchOff = 0.36f + 0.2f * s.pinchSensitivity,
+            dwellEnabled = s.dwellClick,
+        )
+        usingFallback = false
+        handTracker.start(owner) { ok ->
+            if (ok) {
+                _trackingEngine.value = "MediaPipe hand tracking"
+                _cameraActive.value = true
+            } else if (!usingFallback) {
+                // No hand model on this device: fall back to simple motion swipes.
+                usingFallback = true
+                camera.start(owner) { active ->
+                    _cameraActive.value = active
+                    _trackingEngine.value = if (active) "Motion fallback" else ""
+                }
+            }
+        }
     }
 
     fun stopCamera() {
+        handTracker.stop()
         camera.stop()
+        engine.reset()
+        _pointer.value = Pointer(visible = false)
+        _trackingEngine.value = ""
         _cameraActive.value = false
     }
 

@@ -73,6 +73,9 @@ class JarvisController(
     private val levels: AudioLevelBus,
     private val routines: RoutineBook? = null,
     private val sounds: UiSounds? = null,
+    private val screenWaker: com.jarvis.assistant.power.ScreenWaker? = null,
+    /** Describes what the user is pointing at on screen; appended to the AI's view of the request. */
+    private val contextProvider: (() -> String?)? = null,
 ) {
     private val _hud = MutableStateFlow(HudState(online = network.checkNow()))
     val hud: StateFlow<HudState> = _hud
@@ -115,6 +118,7 @@ class JarvisController(
 
     /** Mic button: interrupts whatever is going on, or starts a single listen when idle. */
     fun listenNow() {
+        if (settingsRepo.settings.value.wakeScreen) screenWaker?.wakeAndShow()
         when (_hud.value.phase) {
             AssistantPhase.IDLE, AssistantPhase.ERROR -> schedule { interaction(null) }
             else -> schedule(null) // interrupt, then fall back to standby if it was active
@@ -203,7 +207,7 @@ class JarvisController(
                 continue
             }
             val detection: WakeDetection = try {
-                wakeEngine.awaitWake(settings.inputLanguage, settings.wakeSensitivity)
+                wakeEngine.awaitWake(settings.inputLanguage, settings.wakeSensitivity, settings.wakeMode)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: WakeWordException) {
@@ -231,6 +235,7 @@ class JarvisController(
             JLog.d("Controller", "Wake word detected")
             if (settings.wakeHaptic) Haptics.tick(context)
             sounds?.play(UiSounds.Kind.WAKE)
+            if (settings.wakeScreen && screenWaker?.wakeAndShow() == true) delay(700) // let the screen and HUD come up first
             val inline = detection.trailingText
             if (inline != null) {
                 interaction(inline.take(MAX_UTTERANCE))
@@ -441,6 +446,13 @@ class JarvisController(
         while (turns.size > 1 && turns[1].role == ChatTurn.ASSISTANT) turns.removeAt(1)
         val last = turns.last()
         if (last.role != ChatTurn.USER || last.content != userText) turns += ChatTurn(ChatTurn.USER, userText)
+        if (toolFollowUp == null) {
+            // "이거 / 여기" refer to the window under the cursor; tell the AI which one (not stored in history).
+            contextProvider?.invoke()?.let { ctx ->
+                val i = turns.lastIndex
+                turns[i] = ChatTurn(ChatTurn.USER, turns[i].content + "\n\n[SCREEN CONTEXT: $ctx]")
+            }
+        }
         if (toolFollowUp != null) turns += ChatTurn(ChatTurn.USER, toolFollowUp)
         return turns
     }
@@ -644,6 +656,8 @@ class JarvisController(
             "CALCULATE", "STORAGE_INFO", "MEMORY_INFO", "DEVICE_INFO", "NETWORK_INFO", "UPTIME", "STATUS_REPORT", "HELP",
             "AMBIENT_LIGHT", "COMPASS", "STEP_COUNT", "ALTITUDE", "FIND_PHONE", "STOP_FIND_PHONE", "REMINDER_LIST",
             "REMINDER_CANCEL", "SHOW_ALARMS", "ROUTINE_LIST", "DAILY_BRIEFING", "COUNTER_ADD", "COUNTER_GET",
+            "HOLOGRAM_OPEN", "HOLOGRAM_CLOSE", "WINDOW_OPEN", "WINDOW_CLOSE", "WINDOW_CLOSE_ALL", "WINDOW_ARRANGE",
+            "WINDOW_MAXIMIZE", "WINDOW_RESTORE", "WINDOW_MOVE_HERE", "WINDOW_REFRESH",
         )
 
         /** Handled inside the controller itself, so no installed Command is required. */

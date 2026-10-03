@@ -41,7 +41,14 @@ import com.jarvis.assistant.data.model.AppSettings
 import com.jarvis.assistant.data.model.VoiceStyle
 import com.jarvis.assistant.data.model.Gesture
 import com.jarvis.assistant.data.model.GestureAction
+import com.jarvis.assistant.data.model.WakeMode
 import com.jarvis.assistant.data.model.WakeSensitivity
+import com.jarvis.assistant.holo.HoloLayout
+import com.jarvis.assistant.holo.HoloPanel
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
 import com.jarvis.assistant.data.model.SettingKeys
 import com.jarvis.assistant.data.model.ThemeMode
 import com.jarvis.assistant.data.model.TtsProviderType
@@ -63,6 +70,7 @@ data class PermissionStatus(
     val calendar: Boolean = false,
     val activity: Boolean = false,
     val writeSettings: Boolean = false,
+    val batteryOptimization: Boolean = false,
 )
 
 class PermissionActions(
@@ -76,8 +84,10 @@ class PermissionActions(
     val requestCalendar: () -> Unit = {},
     val requestActivity: () -> Unit = {},
     val requestWriteSettings: () -> Unit = {},
+    val requestBatteryOptimization: () -> Unit = {},
 )
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
     settings: AppSettings,
@@ -263,6 +273,22 @@ fun SettingsScreen(
                         "Strict = exact \"JARVIS\" only. Sensitive also accepts close mis-hearings (자비스, 자버스, Jervis…), at the cost of a few false wakes.",
                         color = colors.textDim, fontSize = 11.sp,
                     )
+                    DropdownRow(
+                        "Wake mode",
+                        settings.wakeMode.label,
+                        WakeMode.values().map { it.name to it.label },
+                    ) { save(SettingKeys.WAKE_MODE, it) }
+                    Text(settings.wakeMode.hint, color = colors.textDim, fontSize = 11.sp)
+                    SwitchRow(
+                        "Listen with the screen off",
+                        "Holds a wake lock while standby runs so JARVIS keeps hearing you when the phone sleeps (uses more battery).",
+                        settings.keepAwakeStandby,
+                    ) { save(SettingKeys.KEEP_AWAKE, it) }
+                    SwitchRow(
+                        "Wake the screen when called",
+                        "Turns the screen on and shows JARVIS above the lock screen. History, notes and settings stay hidden until you unlock.",
+                        settings.wakeScreen,
+                    ) { save(SettingKeys.WAKE_SCREEN, it) }
                     SwitchRow("Haptic feedback", "Short vibration when JARVIS wakes or a gesture is recognised", settings.wakeHaptic) {
                         save(SettingKeys.WAKE_HAPTIC, it)
                     }
@@ -304,6 +330,14 @@ fun SettingsScreen(
                         save(SettingKeys.CAMERA_GESTURES, it)
                         if (it && !permissions.camera) actions.requestCamera()
                     }
+                    SliderRow("Pinch sensitivity", settings.pinchSensitivity, 0f..1f, { "%.0f%%".format(it * 100) }) {
+                        save(SettingKeys.PINCH_SENSITIVITY, it.toString())
+                    }
+                    SwitchRow(
+                        "Dwell click",
+                        "Hold the pointing finger still for about a second to click",
+                        settings.dwellClick,
+                    ) { save(SettingKeys.DWELL_CLICK, it) }
                     Gesture.values().forEach { g ->
                         val current = settings.gestureActions[g] ?: g.default
                         DropdownRow(
@@ -311,6 +345,44 @@ fun SettingsScreen(
                             current.label,
                             GestureAction.values().map { it.name to it.label },
                         ) { save(g.key, it) }
+                    }
+                }
+
+                // ---------------------------------------------------------------- Hologram
+                SectionHeader("HOLOGRAM")
+                SettingsCard {
+                    Text(
+                        "Open it from the HUD (cube icon) or say \"홀로그램 켜줘\". Windows boot up one after another; move them with touch or the air cursor.",
+                        color = colors.textDim, fontSize = 11.sp,
+                    )
+                    SliderRow("Windows opened by default", settings.holoCount.toFloat(), 4f..11f, { it.toInt().toString() }) {
+                        save(SettingKeys.HOLO_COUNT, it.toInt().toString())
+                        save(SettingKeys.HOLO_PANELS, "")
+                    }
+                    val chosen = settings.holoPanels.ifEmpty { HoloLayout.defaultPanels(settings.holoCount) }
+                    Text("Choose which windows (4 to 11)", color = colors.text, fontSize = 13.sp)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        HoloPanel.values().forEach { p ->
+                            val on = p in chosen
+                            Text(
+                                p.ko,
+                                color = if (on) Color.Black else colors.accentSoft,
+                                fontSize = 12.sp,
+                                modifier = Modifier
+                                    .background(if (on) colors.accent else colors.accent.copy(alpha = 0.10f))
+                                    .clickable {
+                                        val next = if (on) chosen - p else chosen + p
+                                        if (next.size in HoloPanel.MIN_OPEN..HoloPanel.MAX_OPEN) {
+                                            save(SettingKeys.HOLO_PANELS, next.joinToString(",") { it.name })
+                                            save(SettingKeys.HOLO_COUNT, next.size.toString())
+                                        }
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                            )
+                        }
+                    }
+                    SwitchRow("Parallax", "Windows shift with the tilt of the phone for a 3D feel", settings.holoParallax) {
+                        save(SettingKeys.HOLO_PARALLAX, it)
                     }
                 }
 
@@ -418,6 +490,11 @@ fun SettingsScreen(
                         "OPEN", actions.requestWriteSettings,
                     )
                     PermissionRow(
+                        "Ignore battery optimisation",
+                        "Recommended: lets JARVIS keep listening and reach the AI while the phone sleeps",
+                        permissions.batteryOptimization, "ALLOW", actions.requestBatteryOptimization,
+                    )
+                    PermissionRow(
                         "Blocked a permission?",
                         "Open the system page for JARVIS to change it manually",
                         granted = false,
@@ -428,7 +505,7 @@ fun SettingsScreen(
 
                 SectionHeader("ABOUT")
                 SettingsCard {
-                    Text("JARVIS V1.2 · voice is never recorded or stored; API keys are encrypted in the Android Keystore.", color = colors.textDim, fontSize = 12.sp)
+                    Text("JARVIS V1.3 · voice is never recorded or stored; API keys are encrypted in the Android Keystore.", color = colors.textDim, fontSize = 12.sp)
                 }
             }
         }

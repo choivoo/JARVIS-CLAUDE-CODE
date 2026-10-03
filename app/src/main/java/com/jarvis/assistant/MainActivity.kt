@@ -33,6 +33,7 @@ import com.jarvis.assistant.service.JarvisForegroundService
 import com.jarvis.assistant.ui.boot.BootScreen
 import com.jarvis.assistant.ui.conversation.ConversationScreen
 import com.jarvis.assistant.ui.conversation.NotesScreen
+import com.jarvis.assistant.ui.holo.HologramScreen
 import com.jarvis.assistant.ui.home.HomeScreen
 import com.jarvis.assistant.ui.settings.PermissionActions
 import com.jarvis.assistant.ui.settings.PermissionStatus
@@ -62,6 +63,12 @@ class MainActivity : ComponentActivity() {
 
     /** Quick Settings tile / launcher shortcut: start listening immediately. */
     private fun handleIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_WAKE_UI, false) == true) {
+            // Called while the phone was asleep: light the screen and show JARVIS above the lock screen.
+            intent.removeExtra(EXTRA_WAKE_UI)
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        }
         if (intent?.getBooleanExtra(EXTRA_LISTEN, false) == true) {
             intent.removeExtra(EXTRA_LISTEN)
             if (Perms.hasMic(this)) applicationContext.container.controller.listenNow()
@@ -80,10 +87,11 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_LISTEN = "com.jarvis.assistant.extra.LISTEN"
+        const val EXTRA_WAKE_UI = "com.jarvis.assistant.extra.WAKE_UI"
     }
 }
 
-private enum class Screen { HOME, SETTINGS, HISTORY, NOTES }
+private enum class Screen { HOME, SETTINGS, HISTORY, NOTES, HOLO }
 
 @Composable
 private fun JarvisRoot(container: AppContainer, settings: AppSettings) {
@@ -117,8 +125,28 @@ private fun JarvisRoot(container: AppContainer, settings: AppSettings) {
             calendar = Perms.hasCalendar(context),
             activity = Perms.hasActivityRecognition(context),
             writeSettings = Perms.canWriteSettings(context),
+            batteryOptimization = Perms.ignoresBatteryOptimizations(context),
         )
     }
+
+    // Over the lock screen JARVIS must not reveal private data (history, notes, settings).
+    val keyguard = remember { context.getSystemService(android.app.KeyguardManager::class.java) }
+    var locked by remember { mutableStateOf(keyguard?.isKeyguardLocked == true) }
+    DisposableEffect(permTick) {
+        locked = keyguard?.isKeyguardLocked == true
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: android.content.Context, i: Intent) {
+                locked = keyguard?.isKeyguardLocked == true
+            }
+        }
+        val filter = android.content.IntentFilter().apply {
+            addAction(Intent.ACTION_USER_PRESENT)
+            addAction(Intent.ACTION_SCREEN_OFF)
+        }
+        context.registerReceiver(receiver, filter)
+        onDispose { context.unregisterReceiver(receiver) }
+    }
+    LaunchedEffect(locked) { if (locked) screen = Screen.HOME }
 
     var pendingAction by remember { mutableStateOf<String?>(null) }
 
@@ -196,6 +224,11 @@ private fun JarvisRoot(container: AppContainer, settings: AppSettings) {
             requestContacts = { contactsLauncher.launch(Manifest.permission.READ_CONTACTS) },
             requestCalendar = { calendarLauncher.launch(Manifest.permission.READ_CALENDAR) },
             requestActivity = { activityLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION) },
+            requestBatteryOptimization = {
+                context.startActivity(
+                    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}")),
+                )
+            },
             requestWriteSettings = {
                 context.startActivity(
                     Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:${context.packageName}")),
@@ -236,11 +269,21 @@ private fun JarvisRoot(container: AppContainer, settings: AppSettings) {
 
     // Camera swipes only run on the home screen, and only while it is visible.
     val cameraActive by container.gestures.cameraActive.collectAsState()
-    DisposableEffect(settings.cameraGestures, status.camera, booted, screen) {
-        if (settings.cameraGestures && status.camera && booted && screen == Screen.HOME) {
+    DisposableEffect(settings.cameraGestures, status.camera, booted, screen, locked) {
+        if (settings.cameraGestures && status.camera && booted && !locked && (screen == Screen.HOME || screen == Screen.HOLO)) {
             container.gestures.startCamera(lifecycleOwner)
         }
         onDispose { container.gestures.stopCamera() }
+    }
+    // Hologram workspace <-> screen state (voice can open it too).
+    val holoState by container.holo.state.collectAsState()
+    LaunchedEffect(holoState.visible) {
+        if (holoState.visible && !locked && screen != Screen.HOLO) screen = Screen.HOLO
+        if (!holoState.visible && screen == Screen.HOLO) screen = Screen.HOME
+    }
+    LaunchedEffect(screen) {
+        container.gestures.pointerMode = screen == Screen.HOLO
+        if (screen == Screen.HOLO) container.holo.show() else container.holo.hide()
     }
     val notes by container.notes.observeAll().collectAsState(initial = emptyList())
     val tasks by container.tasks.observeAll().collectAsState(initial = emptyList())
@@ -269,7 +312,9 @@ private fun JarvisRoot(container: AppContainer, settings: AppSettings) {
             onOpenSettings = { screen = Screen.SETTINGS },
             onOpenHistory = { screen = Screen.HISTORY },
             onOpenNotes = { screen = Screen.NOTES },
+            onOpenHolo = { screen = Screen.HOLO },
             cameraGestureActive = cameraActive,
+            locked = locked,
         )
         Screen.SETTINGS -> SettingsScreen(
             settings = settings,
@@ -282,6 +327,24 @@ private fun JarvisRoot(container: AppContainer, settings: AppSettings) {
             onSaveRoutine = { n, st -> scope.launch { container.routineRepo.save(n, st) } },
             onDeleteRoutine = { id -> scope.launch { container.routineRepo.delete(id) } },
             onBack = { screen = Screen.HOME },
+        )
+        Screen.HOLO -> HologramScreen(
+            holo = container.holo,
+            hub = container.holoData,
+            hud = hud,
+            level = level,
+            pointerFlow = container.gestures.pointer,
+            pointerEvents = container.gestures.pointerEvents,
+            trackingEngine = container.gestures.trackingEngine,
+            handsEnabled = settings.cameraGestures && status.camera,
+            handsPermitted = status.camera,
+            parallax = settings.holoParallax,
+            onAsk = { if (!Perms.hasMic(context)) pendingAction = "listen" else controller.listenNow() },
+            onExit = { screen = Screen.HOME },
+            onEnableHands = {
+                if (!status.camera) actions.requestCamera()
+                scope.launch { container.settings.put(com.jarvis.assistant.data.model.SettingKeys.CAMERA_GESTURES, true) }
+            },
         )
         Screen.NOTES -> NotesScreen(
             notes = notes,

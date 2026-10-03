@@ -62,6 +62,13 @@ enum class AccentStyle(val label: String) {
     ARC_BLUE("Arc blue"), STARK_GOLD("Stark gold"), MATRIX_GREEN("Matrix green"), CRIMSON("Crimson")
 }
 
+/** How strictly "JARVIS" must be addressed before the assistant wakes. */
+enum class WakeMode(val label: String, val hint: String) {
+    CALL("Call me", "Only when the sentence starts with the name (\"자비스, …\"). Ignores people merely talking about JARVIS."),
+    DOUBLE("Say it twice", "\"자비스 자비스\" – almost no accidental wakes, e.g. near a TV."),
+    ANYWHERE("Anywhere", "Wakes whenever the name is heard, even mid-sentence."),
+}
+
 enum class WakeSensitivity(val label: String) {
     STRICT("Strict"), NORMAL("Normal"), SENSITIVE("Sensitive")
 }
@@ -89,6 +96,10 @@ enum class Gesture(val key: String, val label: String, val default: GestureActio
     SWIPE_RIGHT("gesture.swipeRight", "Swipe right (camera)", GestureAction.MUSIC_PREVIOUS),
     SWIPE_UP("gesture.swipeUp", "Swipe up (camera)", GestureAction.VOLUME_UP),
     SWIPE_DOWN("gesture.swipeDown", "Swipe down (camera)", GestureAction.VOLUME_DOWN),
+    PALM_HOLD("gesture.palmHold", "Open palm held (camera)", GestureAction.STOP),
+    FIST_HOLD("gesture.fistHold", "Fist held (camera)", GestureAction.NONE),
+    VICTORY_HOLD("gesture.victoryHold", "Victory sign held (camera)", GestureAction.LISTEN),
+    THUMBS_UP_HOLD("gesture.thumbsUpHold", "Thumbs up held (camera)", GestureAction.MUSIC_TOGGLE),
 }
 
 object SettingKeys {
@@ -114,10 +125,18 @@ object SettingKeys {
     const val ACCENT = "ui.accent"
     const val SPEAK_REMINDERS = "reminders.speak"
     const val WAKE_SENSITIVITY = "wake.sensitivity"
+    const val WAKE_MODE = "wake.mode"
+    const val KEEP_AWAKE = "wake.keepAwake"
+    const val WAKE_SCREEN = "wake.screen"
     const val WAKE_HAPTIC = "wake.haptic"
     const val USER_TITLE = "user.title"
     const val PROXIMITY_GESTURES = "gesture.proximity.enabled"
     const val CAMERA_GESTURES = "gesture.camera.enabled"
+    const val HOLO_COUNT = "holo.count"
+    const val HOLO_PANELS = "holo.panels"
+    const val HOLO_PARALLAX = "holo.parallax"
+    const val PINCH_SENSITIVITY = "gesture.pinch.sensitivity"
+    const val DWELL_CLICK = "gesture.dwell.enabled"
 
     fun aiEndpoint(p: AiProviderType) = "ai.endpoint.${p.name}"
     fun aiModel(p: AiProviderType) = "ai.model.${p.name}"
@@ -152,6 +171,11 @@ data class AppSettings(
     val lastLat: Double? = null,
     val lastLon: Double? = null,
     val wakeSensitivity: WakeSensitivity = WakeSensitivity.NORMAL,
+    val wakeMode: WakeMode = WakeMode.CALL,
+    /** Hold a partial wake lock while standby runs so listening continues with the screen off. */
+    val keepAwakeStandby: Boolean = true,
+    /** Turn the screen on and show JARVIS over the lock screen when called. */
+    val wakeScreen: Boolean = true,
     val voiceStyle: VoiceStyle = VoiceStyle.JARVIS,
     /** Run clear-cut device commands locally without waiting for the AI (faster, works offline, no API cost). */
     val localShortcuts: Boolean = true,
@@ -163,6 +187,14 @@ data class AppSettings(
     val userTitle: String = "Sir",
     val proximityGestures: Boolean = true,
     val cameraGestures: Boolean = false,
+    /** 0 = firm pinch needed, 1 = light touch is enough. */
+    val pinchSensitivity: Float = 0.5f,
+    val dwellClick: Boolean = true,
+    /** How many holographic windows open by default (4..11). */
+    val holoCount: Int = 6,
+    /** Panels chosen in Settings; empty = the first [holoCount] of the default order. */
+    val holoPanels: List<com.jarvis.assistant.holo.HoloPanel> = emptyList(),
+    val holoParallax: Boolean = true,
     val gestureActions: Map<Gesture, GestureAction> = Gesture.values().associateWith { it.default },
 ) {
     companion object {
@@ -200,6 +232,9 @@ data class AppSettings(
                 wakeSensitivity = WakeSensitivity.values().firstOrNull { it.name == enum(SettingKeys.WAKE_SENSITIVITY) }
                     ?: WakeSensitivity.NORMAL,
                 wakeHaptic = bool(SettingKeys.WAKE_HAPTIC, true),
+                wakeMode = WakeMode.values().firstOrNull { it.name == enum(SettingKeys.WAKE_MODE) } ?: WakeMode.CALL,
+                keepAwakeStandby = bool(SettingKeys.KEEP_AWAKE, true),
+                wakeScreen = bool(SettingKeys.WAKE_SCREEN, true),
                 voiceStyle = VoiceStyle.values().firstOrNull { it.name == enum(SettingKeys.VOICE_STYLE) } ?: VoiceStyle.JARVIS,
                 uiSounds = bool(SettingKeys.UI_SOUNDS, true),
                 localShortcuts = bool(SettingKeys.LOCAL_SHORTCUTS, true),
@@ -208,6 +243,13 @@ data class AppSettings(
                 userTitle = map[SettingKeys.USER_TITLE]?.trim()?.takeIf { it.isNotEmpty() } ?: "Sir",
                 proximityGestures = bool(SettingKeys.PROXIMITY_GESTURES, true),
                 cameraGestures = bool(SettingKeys.CAMERA_GESTURES, false),
+                pinchSensitivity = map[SettingKeys.PINCH_SENSITIVITY]?.toFloatOrNull()?.coerceIn(0f, 1f) ?: 0.5f,
+                dwellClick = bool(SettingKeys.DWELL_CLICK, true),
+                holoCount = map[SettingKeys.HOLO_COUNT]?.toIntOrNull()?.coerceIn(4, 11) ?: 6,
+                holoPanels = map[SettingKeys.HOLO_PANELS].orEmpty().split(',').mapNotNull { n ->
+                    com.jarvis.assistant.holo.HoloPanel.values().firstOrNull { it.name == n.trim() }
+                }.distinct().take(11),
+                holoParallax = bool(SettingKeys.HOLO_PARALLAX, true),
                 gestureActions = Gesture.values().associateWith { g ->
                     GestureAction.values().firstOrNull { it.name == map[g.key] } ?: g.default
                 },

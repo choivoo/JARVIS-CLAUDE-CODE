@@ -1,4 +1,4 @@
-# JARVIS V1.2 — Android voice assistant
+# JARVIS V1.3 — Android voice assistant
 
 Korean voice in → AI → calm English voice out, with Korean subtitles on a black futuristic HUD.
 
@@ -9,6 +9,17 @@ Korean voice in → AI → calm English voice out, with Korean subtitles on a bl
 * Kotlin · Jetpack Compose · Room · OkHttp · coroutines · Gradle Kotlin DSL
 * `minSdk 29` (Android 10) · `compileSdk/targetSdk 35`
 * No Google Play Services, no proprietary SDKs
+
+## What's new in 1.3
+
+* **Hologram workspace** – 4–11 holographic windows boot in one after another and load their own data; move, click,
+  close and maximize by touch or by hand in the air. Say what you want about the window you point at.
+* **Air gestures v2** – MediaPipe hand landmarks: smooth cursor, pinch click/drag, dwell click, swipes, pose holds
+  (fallback: the old motion detector).
+* **Wake word** – modes *call / twice / anywhere*; talking *about* "자비스" no longer wakes it.
+* **Screen off / locked** – standby wake lock + screen wake + over-lock UI (private content hidden while locked).
+  Exempt JARVIS from battery optimisation in Settings for best results. Powered-off phones cannot listen.
+* **Releases** – pushing a tag `v*` builds and publishes a GitHub Release with the APK (`.github/workflows/release.yml`).
 
 ## Free AI (1.2.1)
 
