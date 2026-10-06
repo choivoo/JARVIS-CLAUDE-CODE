@@ -1,0 +1,74 @@
+name: Release
+
+# Pushing a tag v* releases it. Running the workflow by hand (Actions -> Release -> Run workflow)
+# creates the missing history tags, creates the tag `tag` on the selected commit if it does not exist,
+# builds the APKs and publishes the GitHub Release.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (created on the selected commit if missing)"
+        required: true
+        default: "v1.3"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create history tags (manual run only)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          create() {
+            if git ls-remote --exit-code --tags origin "refs/tags/$1" >/dev/null 2>&1; then echo "$1 exists"; return; fi
+            if git cat-file -e "$2^{commit}" 2>/dev/null; then
+              git tag -a "$1" "$2" -m "JARVIS $1" && git push origin "$1"
+            else echo "commit $2 not found, skipping $1"; fi
+          }
+          create v1.0 707620f73f6c58ebd5054f31144f33b8290e78d8
+          create v1.1 436be153f932a605dbcb0b1037dd48a21d570f37
+          create v1.2 b08a68134f15d9ec9de15bcfe1b5980fe7ef97e0
+          create v1.2.1 5c4de48fd073e006ac48a2d86da43358db16ac35
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest
+
+      - name: Build APKs
+        run: ./gradlew assembleDebug assembleRelease
+
+      - name: Name the APKs
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/JARVIS-${TAG}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/JARVIS-${TAG}-debug.apk"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
+          name: JARVIS ${{ env.TAG }}
+          body_path: RELEASE_NOTES.md
+          files: dist/*.apk
