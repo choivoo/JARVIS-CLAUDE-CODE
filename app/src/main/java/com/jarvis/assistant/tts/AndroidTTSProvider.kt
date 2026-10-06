@@ -113,7 +113,12 @@ class AndroidTTSProvider(private val context: Context) : TTSProvider {
         }
         val voices = engine.voices.orEmpty().filter { it.locale.language == "en" }
         val chosen = voices.firstOrNull { it.name == settings.voice } ?: voices.maxByOrNull { score(it) }
+        var pitch = settings.pitch
         if (chosen != null) {
+            // No known-male voice installed: lower the pitch so an unknown or female voice sounds less feminine.
+            if (settings.voice.isBlank() || chosen.name != settings.voice) {
+                if (gender(chosen) != Gender.MALE) pitch = (pitch * 0.82f).coerceAtLeast(0.5f)
+            }
             try {
                 engine.voice = chosen
             } catch (e: Exception) {
@@ -121,7 +126,7 @@ class AndroidTTSProvider(private val context: Context) : TTSProvider {
             }
         }
         engine.setSpeechRate(settings.rate)
-        engine.setPitch(settings.pitch)
+        engine.setPitch(pitch)
     }
 
     private suspend fun renderToFile(engine: TextToSpeech, text: String, file: File) {
@@ -155,19 +160,38 @@ class AndroidTTSProvider(private val context: Context) : TTSProvider {
         tts = null
     }
 
+    enum class Gender { MALE, FEMALE, UNKNOWN }
+
     companion object {
-        // Google TTS en-GB variants that are usually male (gbb, gbd, rjs), e.g. "en-gb-x-gbd-local".
-        private val maleMarkers = listOf("-gbb-", "-gbd-", "-rjs-", "male")
+        // Google TTS variant codes. en-GB: gbb, gbd, rjs are male; gba, gbc, gbg, gbf female.
+        // en-US: iol, iom, tpd, sfg(f) ... only the commonly known ones are listed.
+        private val maleMarkers = listOf(
+            "-gbb-", "-gbd-", "-rjs-", "-iol-", "-iom-", "-tpd-", "-ause-", "-aub-", "-aud-", "-ieh-",
+            "smtm", "male", "_m_", "-m-",
+        )
+        private val femaleMarkers = listOf(
+            "female", "-gba-", "-gbc-", "-gbf-", "-gbg-", "-iob-", "-iog-", "-tpc-", "-tpf-", "-sfg-",
+            "-aua-", "-auc-", "-ieg-", "smtf", "_f_", "-f-",
+        )
+
+        internal fun gender(voice: Voice): Gender {
+            val name = voice.name.lowercase(Locale.ROOT)
+            if (femaleMarkers.any { name.contains(it) }) return Gender.FEMALE
+            if (maleMarkers.any { name.contains(it) }) return Gender.MALE
+            return Gender.UNKNOWN
+        }
 
         internal fun score(voice: Voice): Int {
-            val name = voice.name.lowercase(Locale.ROOT)
             var s = 0
             if (voice.locale.country.equals("GB", ignoreCase = true)) s += 6
             else if (voice.locale.country.equals("AU", ignoreCase = true) ||
                 voice.locale.country.equals("IE", ignoreCase = true)
             ) s += 2
-            if (maleMarkers.any { name.contains(it) } && !name.contains("female")) s += 5
-            if (name.contains("female")) s -= 5
+            s += when (gender(voice)) {
+                Gender.MALE -> 30
+                Gender.FEMALE -> -30
+                Gender.UNKNOWN -> 0
+            }
             if (!voice.isNetworkConnectionRequired) s += 1
             s += voice.quality / 100
             return s
