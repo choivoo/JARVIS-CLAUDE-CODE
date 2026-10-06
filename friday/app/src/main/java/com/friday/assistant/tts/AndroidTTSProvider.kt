@@ -5,6 +5,8 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import com.friday.assistant.settings.FridaySettings
+import com.friday.assistant.voice.Emphasis
+import com.friday.assistant.voice.VoiceProfile
 import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
@@ -35,17 +37,17 @@ class AndroidTTSProvider(
         return tts!!
     }
 
-    override suspend fun speak(text: String) {
+    override suspend fun speak(text: String, emphasis: Emphasis, onFirstAudio: () -> Unit) {
         val s = settings()
         val engine = engine()
         engine.language = Locale.US
         pickVoice(engine, s.androidVoice)?.let { engine.voice = it }
-        engine.setSpeechRate(s.ttsSpeed)
-        engine.setPitch(s.ttsPitch)
+        engine.setSpeechRate(s.ttsSpeed * VoiceProfile.FRIDAY.rateFactor(emphasis))
+        engine.setPitch(s.ttsPitch * VoiceProfile.FRIDAY.pitchFactor(emphasis))
         val id = UUID.randomUUID().toString()
         suspendCancellableCoroutine { cont ->
             engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) { _amp.value = 0.6f }
+                override fun onStart(utteranceId: String?) { _amp.value = 0.6f; onFirstAudio() }
                 override fun onDone(utteranceId: String?) { _amp.value = 0f; if (utteranceId == id && cont.isActive) cont.resume(Unit) }
                 @Deprecated("Deprecated in Java")
                 override fun onError(utteranceId: String?) { _amp.value = 0f; if (utteranceId == id && cont.isActive) cont.resume(Unit) }

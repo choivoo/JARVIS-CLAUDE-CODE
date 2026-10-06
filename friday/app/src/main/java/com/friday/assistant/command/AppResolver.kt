@@ -19,6 +19,7 @@ class AppResolver(private val context: Context) {
         private val aliases: Map<String, List<String>> = mapOf(
             "유튜브" to listOf("com.google.android.youtube"), "유투브" to listOf("com.google.android.youtube"),
             "youtube" to listOf("com.google.android.youtube"),
+            "유튜브뮤직" to listOf("com.google.android.apps.youtube.music"), "youtubemusic" to listOf("com.google.android.apps.youtube.music"),
             "카카오톡" to listOf("com.kakao.talk"), "카톡" to listOf("com.kakao.talk"),
             "크롬" to listOf("com.android.chrome"), "chrome" to listOf("com.android.chrome"),
             "네이버" to listOf("com.nhn.android.search"), "naver" to listOf("com.nhn.android.search"),

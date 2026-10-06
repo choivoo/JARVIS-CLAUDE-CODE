@@ -11,6 +11,7 @@ import com.friday.assistant.data.MessageEntity
 import com.friday.assistant.diag.DiagResult
 import com.friday.assistant.diag.DiagnosticsRunner
 import com.friday.assistant.settings.FridaySettings
+import com.friday.assistant.voice.say
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -27,6 +28,8 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     val micLevel get() = c.controller.micLevel
     val amplitude get() = c.controller.amplitude
     val settings: StateFlow<FridaySettings> get() = c.settingsRepo.settings
+    val card get() = c.controller.card
+    val contextSize get() = c.controller.contextSize
     val serviceRunning get() = c.serviceRunning
     val online get() = c.network.online
 
@@ -44,27 +47,31 @@ class ConversationViewModel(private val c: AppContainer) : ViewModel() {
 
 class SettingsViewModel(val c: AppContainer) : ViewModel() {
     val settings: StateFlow<FridaySettings> get() = c.settingsRepo.settings
-    val keyState = MutableStateFlow(KeyState(hasAiKey(), hasTtsKey()))
+    val keyState = MutableStateFlow(KeyState(hasAiKey(), hasTtsKey(), hasTtsKey2()))
     val voices = MutableStateFlow<List<String>>(emptyList())
     val message = MutableStateFlow<String?>(null)
 
-    data class KeyState(val ai: Boolean, val tts: Boolean)
+    data class KeyState(val ai: Boolean, val tts: Boolean, val tts2: Boolean = false)
+    val perms = MutableStateFlow(com.friday.assistant.permission.PermissionCenter.items(c.permissionSnapshot))
+    fun refreshPerms() { perms.value = com.friday.assistant.permission.PermissionCenter.items(c.permissionSnapshot) }
 
     private fun hasAiKey() = runCatching { c.settingsRepo.aiApiKey().isNotBlank() }.getOrDefault(false)
+    private fun hasTtsKey2() = runCatching { c.settingsRepo.ttsApiKey2().isNotBlank() }.getOrDefault(false)
     private fun hasTtsKey() = runCatching { c.settingsRepo.ttsApiKey().isNotBlank() }.getOrDefault(false)
 
     fun update(t: (FridaySettings) -> FridaySettings) = c.settingsRepo.update(t)
 
     fun saveAiKey(v: String) = save { c.settingsRepo.setAiApiKey(v) }
     fun saveTtsKey(v: String) = save { c.settingsRepo.setTtsApiKey(v) }
+    fun saveTtsKey2(v: String) = save { c.settingsRepo.setTtsApiKey2(v) }
 
     private fun save(block: () -> Unit) {
         message.value = try { block(); null } catch (e: Exception) { "Could not store the key securely on this device." }
-        keyState.value = KeyState(hasAiKey(), hasTtsKey())
+        keyState.value = KeyState(hasAiKey(), hasTtsKey(), hasTtsKey2())
     }
 
     fun loadVoices() { viewModelScope.launch { voices.value = c.androidTtsProvider.availableVoices() } }
-    fun previewVoice() { viewModelScope.launch { runCatching { c.speaker.speak("Hello, I'm FRIDAY. How can I help?") } } }
+    fun previewVoice() { viewModelScope.launch { runCatching { c.speaker.say("Hello, I'm FRIDAY. How can I help?") } } }
 }
 
 class DiagnosticsViewModel(private val c: AppContainer) : ViewModel() {
@@ -72,6 +79,7 @@ class DiagnosticsViewModel(private val c: AppContainer) : ViewModel() {
     val results = MutableStateFlow<Map<String, DiagResult>>(emptyMap())
     val running = MutableStateFlow<String?>(null)
     val tests get() = runner.tests
+    val latency get() = c.controller.latency
 
     fun run(id: String) {
         viewModelScope.launch {

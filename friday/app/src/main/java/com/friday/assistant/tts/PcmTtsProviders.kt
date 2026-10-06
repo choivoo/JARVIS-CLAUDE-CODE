@@ -5,6 +5,8 @@ import android.media.AudioFormat
 import android.media.AudioTrack
 import com.friday.assistant.settings.FridaySettings
 import com.friday.assistant.util.Http
+import com.friday.assistant.voice.Emphasis
+import com.friday.assistant.voice.VoiceProfile
 import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
@@ -25,7 +27,7 @@ class PcmStreamPlayer(private val sampleRate: Int = 24_000) {
     val amplitude: StateFlow<Float> = _amp.asStateFlow()
     @Volatile private var track: AudioTrack? = null
 
-    suspend fun play(read: (ByteArray) -> Int) = withContext(Dispatchers.IO) {
+    suspend fun play(onFirstAudio: () -> Unit = {}, read: (ByteArray) -> Int) = withContext(Dispatchers.IO) {
         coroutineScope {
             val min = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
             val t = AudioTrack.Builder()
@@ -44,12 +46,14 @@ class PcmStreamPlayer(private val sampleRate: Int = 24_000) {
             try {
                 t.play()
                 val buf = ByteArray(4096)
+                var first = true
                 while (true) {
                     ensureActive()
                     val n = read(buf)
                     if (n <= 0) break
                     _amp.value = peak(buf, n)
                     t.write(buf, 0, n)
+                    if (first) { first = false; onFirstAudio() }
                 }
                 // let the tail drain before reporting done
                 var last = -1
@@ -79,10 +83,10 @@ abstract class PcmHttpTts(protected val client: OkHttpClient = Http.client) : TT
     private val player = PcmStreamPlayer(24_000)
     override val amplitude: StateFlow<Float> get() = player.amplitude
 
-    protected abstract fun request(text: String): Request
+    protected abstract fun request(text: String, emphasis: Emphasis): Request
 
-    override suspend fun speak(text: String) {
-        val call = client.newCall(request(text))
+    override suspend fun speak(text: String, emphasis: Emphasis, onFirstAudio: () -> Unit) {
+        val call = client.newCall(request(text, emphasis))
         val resp = withContext(Dispatchers.IO) {
             try { call.execute() } catch (e: java.io.IOException) { throw TtsException("TTS network error") }
         }
@@ -91,7 +95,7 @@ abstract class PcmHttpTts(protected val client: OkHttpClient = Http.client) : TT
             val body = r.body ?: throw TtsException("Empty TTS response")
             val stream = body.byteStream()
             try {
-                player.play { stream.read(it) }
+                player.play(onFirstAudio) { stream.read(it) }
             } finally {
                 call.cancel()
             }
@@ -107,11 +111,11 @@ class OpenAICompatibleTTSProvider(
     private val apiKey: String,
 ) : PcmHttpTts() {
     override val name = "OpenAI-compatible TTS"
-    override fun request(text: String): Request {
+    override fun request(text: String, emphasis: Emphasis): Request {
         if (apiKey.isBlank()) throw TtsException("TTS API key missing")
         val body = JSONObject().put("model", s.ttsModel).put("voice", s.ttsVoice).put("input", text)
             .put("response_format", "pcm").put("speed", s.ttsSpeed.toDouble().coerceIn(0.25, 4.0))
-            .put("instructions", "Calm, clear, intelligent female AI assistant. Natural intonation, slightly futuristic.")
+            .put("instructions", VoiceProfile.FRIDAY.instructions(emphasis))
         return Request.Builder().url(s.ttsEndpoint.trimEnd('/') + "/audio/speech")
             .header("Authorization", "Bearer $apiKey")
             .post(body.toString().toRequestBody("application/json".toMediaType())).build()
@@ -124,7 +128,7 @@ class ElevenLabsCompatibleTTSProvider(
     private val apiKey: String,
 ) : PcmHttpTts() {
     override val name = "ElevenLabs-compatible TTS"
-    override fun request(text: String): Request {
+    override fun request(text: String, emphasis: Emphasis): Request {
         if (apiKey.isBlank() || s.ttsVoice.isBlank()) throw TtsException("TTS key or voice id missing")
         val base = s.ttsEndpoint.trimEnd('/').ifBlank { "https://api.elevenlabs.io/v1" }
         val body = JSONObject().put("text", text).put("model_id", s.ttsModel.ifBlank { "eleven_flash_v2_5" })

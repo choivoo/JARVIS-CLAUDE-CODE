@@ -8,6 +8,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import com.friday.assistant.core.CoreState
 import com.friday.assistant.data.MessageEntity
 import com.friday.assistant.diag.DiagResult
@@ -75,7 +76,7 @@ class UiSmokeTest {
     }
 
     @Test fun settingsRenders() {
-        val actions = SettingsActions({}, {}, { false })
+        val actions = SettingsActions({}, {}, {})
         show {
             SettingsContent(FridaySettings(), hasAiKey = false, hasTtsKey = false, voices = listOf("en-us-x-tpf-local"), message = null,
                 actions = actions, update = {}, saveAiKey = {}, saveTtsKey = {}, loadVoices = {}, preview = {})
@@ -106,5 +107,69 @@ class UiSmokeTest {
         compose.onNodeWithText("PASS").assertIsDisplayed()
         compose.onNodeWithText("NOT CONFIGURED").assertIsDisplayed()
         compose.onNodeWithText("FAIL").assertIsDisplayed()
+    }
+
+    @Test fun ambientModeShowsTimeAndLeavesOnTap() {
+        var exited = 0
+        show { com.friday.assistant.ui.ambient.AmbientScreen(CoreState.IDLE, "", 1f, { 0f }, { exited++ }, { java.time.LocalTime.of(7, 32) }) }
+        compose.onNodeWithText("07:32").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Ambient mode. Tap to leave.").performClick()
+        assertEquals(1, exited)
+    }
+
+    @Test fun contextCardAppearsOnlyWhenThereIsOne() {
+        var card by mutableStateOf<com.friday.assistant.command.InfoCard?>(null)
+        show { HomeContent(CoreState.IDLE, "", "", false, "FRIDAY", { 0f }, {}, {}, card = card) }
+        compose.onNodeWithContentDescription("CALENDAR card").assertDoesNotExist()
+        card = com.friday.assistant.command.InfoCard(com.friday.assistant.command.CardKind.CALENDAR, "오늘 일정 2", listOf("오전 10시 30분 Team sync"))
+        compose.waitForIdle()
+        compose.onNodeWithText("오늘 일정 2").assertIsDisplayed()
+        compose.onNodeWithText("오전 10시 30분 Team sync").assertIsDisplayed()
+    }
+
+    @Test fun permissionCenterRowsOfferTheRightButtons() {
+        val perms = listOf(
+            com.friday.assistant.permission.PermItem("mic", "Microphone", "why", com.friday.assistant.permission.PermStatus.DENIED, com.friday.assistant.permission.PermKind.RUNTIME, "android.permission.RECORD_AUDIO", true),
+            com.friday.assistant.permission.PermItem("listener", "Notification Access", "why", com.friday.assistant.permission.PermStatus.SETTINGS_REQUIRED, com.friday.assistant.permission.PermKind.SPECIAL),
+        )
+        var requested = ""; var opened = ""
+        val actions = SettingsActions({}, { requested = it }, { opened = it.id })
+        show {
+            SettingsContent(FridaySettings(), false, false, emptyList(), null, actions, {}, {}, {}, {}, {}, perms = perms)
+        }
+        compose.onNodeWithText("OPEN SETTINGS").performScrollTo().performClick()
+        assertEquals("listener", opened)
+        compose.onNodeWithText("ALLOW").performScrollTo().performClick()
+        assertEquals("android.permission.RECORD_AUDIO", requested)
+        compose.onNodeWithText("DENIED").assertExists()
+        compose.onNodeWithText("SETTINGS REQUIRED").assertExists()
+    }
+
+    @Test fun wholeSwitchRowIsTheTouchTarget() {
+        var settings by mutableStateOf(FridaySettings(followUpEnabled = true))
+        show {
+            SettingsContent(settings, false, false, emptyList(), null, SettingsActions({}, {}, {}), { t -> settings = t(settings) }, {}, {}, {}, {})
+        }
+        // tapping the label text (not the small switch) must toggle
+        compose.onNodeWithText("Follow-up Mode").performScrollTo().performClick()
+        assertEquals(false, settings.followUpEnabled)
+        compose.onNodeWithText("Keep listening after an answer, no need to say FRIDAY again").performScrollTo().performClick()
+        assertEquals(true, settings.followUpEnabled)
+    }
+
+    @Test fun diagnosticsShowsLatencyAndDeviceTestStatus() {
+        val tests = listOf(DiagTest("f", "Follow-up Mode", "hint"))
+        val results = mapOf("f" to DiagResult(DiagStatus.DEVICE_TEST_REQUIRED, "Say FRIDAY twice"))
+        show { DiagnosticsContent(tests, results, null, {}, {}, com.friday.assistant.core.LatencyReport(ai = 300, total = 900)) }
+        compose.onNodeWithText("DEVICE TEST REQUIRED").assertIsDisplayed()
+        compose.onNodeWithText("300 ms").assertIsDisplayed()
+        compose.onNodeWithText("900 ms").assertIsDisplayed()
+        compose.onNodeWithText("Wake latency").assertIsDisplayed()
+    }
+
+    @Test fun iconButtonsHaveDescriptions() {
+        show { HomeContent(CoreState.IDLE, "", "", false, "FRIDAY", { 0f }, {}, {}) }
+        compose.onNodeWithContentDescription("Talk to FRIDAY").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Ambient mode").assertIsDisplayed()
     }
 }

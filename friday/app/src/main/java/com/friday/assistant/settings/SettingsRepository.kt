@@ -21,6 +21,8 @@ class SettingsRepository(private val prefs: SharedPreferences, private val secre
 
     fun aiApiKey(): String = secrets.get(KEY_AI).orEmpty()
     fun ttsApiKey(): String = secrets.get(KEY_TTS).orEmpty()
+    fun ttsApiKey2(): String = secrets.get(KEY_TTS2).orEmpty()
+    fun setTtsApiKey2(value: String) = store(KEY_TTS2, value)
     fun setAiApiKey(value: String) = store(KEY_AI, value)
     fun setTtsApiKey(value: String) = store(KEY_TTS, value)
 
@@ -38,13 +40,26 @@ class SettingsRepository(private val prefs: SharedPreferences, private val secre
             aiProvider = provider,
             aiModel = prefs.getString("aiModel", provider.defaultModel) ?: provider.defaultModel,
             aiEndpoint = prefs.getString("aiEndpoint", provider.defaultEndpoint) ?: provider.defaultEndpoint,
-            ttsProvider = enumOf("ttsProvider", d.ttsProvider),
             ttsEndpoint = prefs.getString("ttsEndpoint", d.ttsEndpoint) ?: d.ttsEndpoint,
             ttsModel = prefs.getString("ttsModel", d.ttsModel) ?: d.ttsModel,
             ttsVoice = prefs.getString("ttsVoice", d.ttsVoice) ?: d.ttsVoice,
             androidVoice = prefs.getString("androidVoice", d.androidVoice) ?: d.androidVoice,
             ttsSpeed = prefs.getFloat("ttsSpeed", d.ttsSpeed),
             ttsPitch = prefs.getFloat("ttsPitch", d.ttsPitch),
+            ttsPriority = prefs.getString("ttsPriority", null)?.split(",")?.mapNotNull { n -> TtsProviderType.entries.firstOrNull { it.name == n } }
+                ?.takeIf { it.isNotEmpty() } ?: d.ttsPriority,
+            ttsSecondaryVoice = prefs.getString("ttsSecondaryVoice", d.ttsSecondaryVoice) ?: d.ttsSecondaryVoice,
+            audioFocusMode = enumOf("audioFocusMode", d.audioFocusMode),
+            bargeIn = prefs.getBoolean("bargeIn", d.bargeIn),
+            subtitleDurationMs = prefs.getInt("subtitleDurationMs", d.subtitleDurationMs),
+            subtitleScale = prefs.getFloat("subtitleScale", d.subtitleScale),
+            alwaysShowSubtitle = prefs.getBoolean("alwaysShowSubtitle", d.alwaysShowSubtitle),
+            followUpEnabled = prefs.getBoolean("followUpEnabled", d.followUpEnabled),
+            followUpTimeoutSec = prefs.getInt("followUpTimeoutSec", d.followUpTimeoutSec),
+            proactiveLowBattery = prefs.getBoolean("proactiveLowBattery", d.proactiveLowBattery),
+            proactiveUpcomingEvent = prefs.getBoolean("proactiveUpcomingEvent", d.proactiveUpcomingEvent),
+            proactiveWeather = prefs.getBoolean("proactiveWeather", d.proactiveWeather),
+            ambientMode = prefs.getBoolean("ambientMode", d.ambientMode),
             sttEngine = prefs.getString("sttEngine", d.sttEngine) ?: d.sttEngine,
             wakeWord = d.wakeWord,
             backgroundAssistant = prefs.getBoolean("backgroundAssistant", d.backgroundAssistant),
@@ -62,10 +77,17 @@ class SettingsRepository(private val prefs: SharedPreferences, private val secre
         prefs.edit()
             .putString("aiProvider", s.aiProvider.name).putString("aiModel", s.aiModel)
             .putString("aiEndpoint", s.aiEndpoint)
-            .putString("ttsProvider", s.ttsProvider.name).putString("ttsEndpoint", s.ttsEndpoint)
+            .putString("ttsEndpoint", s.ttsEndpoint)
             .putString("ttsModel", s.ttsModel).putString("ttsVoice", s.ttsVoice)
             .putString("androidVoice", s.androidVoice)
             .putFloat("ttsSpeed", s.ttsSpeed).putFloat("ttsPitch", s.ttsPitch)
+            .putString("ttsPriority", s.ttsPriority.joinToString(",") { it.name })
+            .putString("ttsSecondaryVoice", s.ttsSecondaryVoice).putString("audioFocusMode", s.audioFocusMode.name)
+            .putBoolean("bargeIn", s.bargeIn).putInt("subtitleDurationMs", s.subtitleDurationMs)
+            .putFloat("subtitleScale", s.subtitleScale).putBoolean("alwaysShowSubtitle", s.alwaysShowSubtitle)
+            .putBoolean("followUpEnabled", s.followUpEnabled).putInt("followUpTimeoutSec", s.followUpTimeoutSec)
+            .putBoolean("proactiveLowBattery", s.proactiveLowBattery).putBoolean("proactiveUpcomingEvent", s.proactiveUpcomingEvent)
+            .putBoolean("proactiveWeather", s.proactiveWeather).putBoolean("ambientMode", s.ambientMode)
             .putString("sttEngine", s.sttEngine)
             .putBoolean("backgroundAssistant", s.backgroundAssistant)
             .putBoolean("autoListen", s.autoListen).putBoolean("voiceFeedback", s.voiceFeedback)
@@ -78,6 +100,7 @@ class SettingsRepository(private val prefs: SharedPreferences, private val secre
     companion object {
         const val KEY_AI = "ai_api_key"
         const val KEY_TTS = "tts_api_key"
+        const val KEY_TTS2 = "tts_api_key_2"
         fun create(context: Context, secrets: SecureStore) = SettingsRepository(
             context.applicationContext.getSharedPreferences("friday_settings", Context.MODE_PRIVATE), secrets,
         )

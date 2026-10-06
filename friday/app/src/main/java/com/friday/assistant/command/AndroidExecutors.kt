@@ -5,16 +5,13 @@ import android.app.SearchManager
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.media.AudioManager
 import android.net.Uri
-import android.os.BatteryManager
 import android.provider.AlarmClock
 import android.provider.Settings
-import android.view.KeyEvent
 import androidx.core.content.ContextCompat
 import com.friday.assistant.search.WebSearchProvider
 import com.friday.assistant.util.EnglishNumbers
@@ -25,7 +22,6 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
-import kotlinx.coroutines.delay
 
 /** Real Android implementations of every allow-listed command. */
 class AndroidExecutors(
@@ -44,7 +40,6 @@ class AndroidExecutors(
     fun all(): Map<CommandType, CommandExecutor> = buildMap {
         put(CommandType.GET_TIME, CommandExecutor { _, _ -> time() })
         put(CommandType.GET_DATE, CommandExecutor { _, _ -> date() })
-        put(CommandType.GET_BATTERY, CommandExecutor { _, _ -> battery() })
         put(CommandType.OPEN_APP, CommandExecutor { c, _ -> openApp(c) })
         put(CommandType.OPEN_URL, CommandExecutor { c, _ -> openUrl(c) })
         put(CommandType.WEB_SEARCH, CommandExecutor { c, _ -> browserSearch(c.param("query")) })
@@ -57,14 +52,16 @@ class AndroidExecutors(
         put(CommandType.VOLUME_UP, CommandExecutor { _, _ -> stepVolume(AudioManager.ADJUST_RAISE) })
         put(CommandType.VOLUME_DOWN, CommandExecutor { _, _ -> stepVolume(AudioManager.ADJUST_LOWER) })
         put(CommandType.SET_VOLUME, CommandExecutor { c, _ -> setVolume(c) })
-        put(CommandType.PLAY_MEDIA, CommandExecutor { _, _ -> media(KeyEvent.KEYCODE_MEDIA_PLAY, "play") })
-        put(CommandType.PAUSE_MEDIA, CommandExecutor { _, _ -> media(KeyEvent.KEYCODE_MEDIA_PAUSE, "pause") })
-        put(CommandType.NEXT_MEDIA, CommandExecutor { _, _ -> media(KeyEvent.KEYCODE_MEDIA_NEXT, "next") })
-        put(CommandType.PREVIOUS_MEDIA, CommandExecutor { _, _ -> media(KeyEvent.KEYCODE_MEDIA_PREVIOUS, "previous") })
         put(CommandType.WEATHER, CommandExecutor { c, _ -> weather(c) })
         put(CommandType.OPEN_SETTINGS, CommandExecutor { c, _ -> openSettings(c.param("target")) })
-        put(CommandType.CALL_CONTACT_REQUEST, CommandExecutor { c, ok -> call(c, ok) })
-        put(CommandType.MESSAGE_CONTACT_REQUEST, CommandExecutor { c, ok -> message(c, ok) })
+        put(CommandType.CALL_CONTACT_REQUEST, object : ConfirmableExecutor() {
+            override suspend fun prepare(command: Command) = call(command, false)
+            override suspend fun perform(command: Command) = call(command, true)
+        })
+        put(CommandType.MESSAGE_CONTACT_REQUEST, object : ConfirmableExecutor() {
+            override suspend fun prepare(command: Command) = message(command, false)
+            override suspend fun perform(command: Command) = message(command, true)
+        })
     }
 
     // ---- read-only info -------------------------------------------------------------------------------------
@@ -84,24 +81,6 @@ class AndroidExecutors(
         val en = n.format(DateTimeFormatter.ofPattern("EEEE, MMMM d", Locale.ENGLISH))
         val ko = "${n.year}년 ${n.monthValue}월 ${n.dayOfMonth}일 ${n.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.KOREAN)}"
         return CommandResult.ok("Today is $en.", "오늘은 ${ko}입니다.")
-    }
-
-    private fun battery(): CommandResult {
-        val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-        var pct = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
-        val sticky = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-        if (pct <= 0 && sticky != null) {
-            val level = sticky.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-            val scale = sticky.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
-            if (level >= 0 && scale > 0) pct = level * 100 / scale
-        }
-        if (pct <= 0) return CommandResult.failed("I couldn't read the battery level.", "배터리 잔량을 읽지 못했습니다.")
-        val status = sticky?.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
-        val charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
-        return CommandResult.ok(
-            "Your battery is currently at ${EnglishNumbers.words(pct)} percent${if (charging) " and charging" else ""}.",
-            "현재 배터리는 ${pct}%입니다${if (charging) " (충전 중)" else ""}.",
-        )
     }
 
     // ---- launching things -----------------------------------------------------------------------------------
@@ -203,6 +182,7 @@ class AndroidExecutors(
             "battery" -> Intent.ACTION_POWER_USAGE_SUMMARY to "battery settings"
             "location" -> Settings.ACTION_LOCATION_SOURCE_SETTINGS to "location settings"
             "apps" -> Settings.ACTION_APPLICATION_SETTINGS to "app settings"
+            "notifications" -> Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS to "notification access settings"
             else -> Settings.ACTION_SETTINGS to "settings"
         }
         return try {
@@ -287,24 +267,6 @@ class AndroidExecutors(
         audio.setStreamVolume(AudioManager.STREAM_MUSIC, Math.round(pct * max / 100f), AudioManager.FLAG_SHOW_UI)
         val actual = volumePercent()
         return CommandResult.ok("Volume set to ${EnglishNumbers.words(actual)} percent.", "볼륨을 ${actual}%로 설정했습니다.")
-    }
-
-    private suspend fun media(code: Int, verb: String): CommandResult {
-        audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
-        audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
-        delay(350)
-        val active = audio.isMusicActive
-        return when {
-            verb == "pause" && active -> CommandResult.failed("I sent pause, but audio is still playing.", "일시정지 신호를 보냈지만 소리가 계속 재생 중입니다.")
-            verb == "play" && !active -> CommandResult.failed(
-                "I sent play, but nothing started. Open a music app first.",
-                "재생 신호를 보냈지만 시작되지 않았습니다. 먼저 음악 앱을 실행해 주세요.",
-            )
-            else -> CommandResult.ok(
-                when (verb) { "play" -> "Playing."; "pause" -> "Paused."; "next" -> "Next track."; else -> "Previous track." },
-                when (verb) { "play" -> "재생합니다."; "pause" -> "일시정지했습니다."; "next" -> "다음 곡으로 넘깁니다."; else -> "이전 곡으로 돌아갑니다." },
-            )
-        }
     }
 
     // ---- weather --------------------------------------------------------------------------------------------

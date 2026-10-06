@@ -23,13 +23,17 @@ import com.friday.assistant.util.Permissions
 import com.friday.assistant.wake.SpeechWakeWordEngine
 import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import com.friday.assistant.voice.say
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Request
 
-enum class DiagStatus { PASS, FAIL, NOT_CONFIGURED }
+enum class DiagStatus { PASS, FAIL, NOT_CONFIGURED, DEVICE_TEST_REQUIRED }
 
 data class DiagResult(val status: DiagStatus, val detail: String)
 
@@ -52,6 +56,15 @@ class DiagnosticsRunner(private val c: AppContainer) {
         DiagTest("router", "Command Router Test", "Time command + rejects unknown"),
         DiagTest("db", "Database Test", "Write, read, count"),
         DiagTest("net", "Network Test", "Reaches the internet"),
+        DiagTest("listener", "Notification Listener", "Needs Notification Access"),
+        DiagTest("calendar", "Calendar", "Reads today's events (needs permission)"),
+        DiagTest("media", "MediaSession", "Needs Notification Access and playing media"),
+        DiagTest("focus", "Audio Focus", "Requests and releases audio focus"),
+        DiagTest("interrupt", "Speech Interrupt", "Starts speech and stops it mid-sentence"),
+        DiagTest("followup", "Follow-up Mode", "Needs a real conversation on the phone"),
+        DiagTest("local", "Local Intent Parser", "Checks sample Korean commands"),
+        DiagTest("brief", "Morning Brief", "Builds a brief from available sources"),
+        DiagTest("perm", "Permission Center", "Reads every permission state"),
     )
 
     suspend fun run(id: String): DiagResult = try {
@@ -68,6 +81,15 @@ class DiagnosticsRunner(private val c: AppContainer) {
             "router" -> router()
             "db" -> db()
             "net" -> net()
+            "listener" -> listener()
+            "calendar" -> calendar()
+            "media" -> media()
+            "focus" -> focus()
+            "interrupt" -> interrupt()
+            "followup" -> followup()
+            "local" -> local()
+            "brief" -> brief()
+            "perm" -> perm()
             else -> DiagResult(DiagStatus.FAIL, "Unknown test")
         }
     } catch (e: CancellationException) {
@@ -134,8 +156,9 @@ class DiagnosticsRunner(private val c: AppContainer) {
     }
 
     private suspend fun tts(): DiagResult {
-        c.speaker.speak("FRIDAY voice check. All systems online.")
-        return pass("Played with ${c.settingsRepo.current.ttsProvider.label} (falls back to Android TTS)")
+        c.speaker.say("FRIDAY voice check. All systems online.")
+        val plan = c.voice.plan().joinToString(" → ") { it.name }
+        return DiagResult(DiagStatus.PASS, "Played via ${c.voice.lastProvider.ifBlank { "?" }} (plan: $plan). Audio quality needs a device test.")
     }
 
     private suspend fun service(): DiagResult {
@@ -190,4 +213,83 @@ class DiagnosticsRunner(private val c: AppContainer) {
             }
         }
     }
+
+    private fun listener(): DiagResult =
+        if (!c.notifications.accessEnabled()) DiagResult(DiagStatus.NOT_CONFIGURED, "Notification Access is off. Turn it on in the Permission Center.")
+        else DiagResult(DiagStatus.PASS, "Access granted; ${c.notifications.recent(30).size} notifications buffered in memory")
+
+    private fun calendar(): DiagResult {
+        if (!c.calendar.canRead()) return DiagResult(DiagStatus.NOT_CONFIGURED, "READ_CALENDAR not granted")
+        val today = java.time.LocalDate.now()
+        val n = c.calendar.events(today.atStartOfDay(), today.plusDays(1).atStartOfDay()).size
+        return pass("$n events today; write access: ${if (c.calendar.canWrite()) "yes" else "no (falls back to the calendar app)"}")
+    }
+
+    private fun media(): DiagResult {
+        if (!c.mediaBackend.hasSessionAccess()) return DiagResult(DiagStatus.NOT_CONFIGURED, "Needs Notification Access to list media sessions")
+        val s = c.mediaBackend.activeSession()
+            ?: return DiagResult(DiagStatus.DEVICE_TEST_REQUIRED, "Access OK but no active session: start music in another app and run again")
+        return pass("${s.appLabel}: ${s.title.ifBlank { "(no title)" }} ${if (s.playing) "(playing)" else "(paused)"}")
+    }
+
+    private fun focus(): DiagResult {
+        val f = com.friday.assistant.voice.AudioFocusManager(ctx)
+        val ok = f.acquire(com.friday.assistant.settings.AudioFocusMode.DUCK)
+        f.release()
+        return if (ok) pass("Audio focus granted and released") else fail("Android refused audio focus (a call may be active)")
+    }
+
+    private suspend fun interrupt(): DiagResult = coroutineScope {
+        val started = CompletableDeferred<Unit>()
+        val job = launch {
+            try {
+                c.speaker.speak(
+                    com.friday.assistant.voice.SpeechRequest(
+                        listOf(com.friday.assistant.voice.SpeechChunk("This is a long test sentence that should be cut off in the middle by the interrupt controller. It keeps going and going.", "")),
+                        onFirstAudio = { started.complete(Unit) },
+                    ),
+                )
+            } catch (e: CancellationException) { /* expected when interrupted */ }
+        }
+        if (withTimeoutOrNull(6_000) { started.await() } == null) { job.cancel(); return@coroutineScope fail("No audio started within 6 s (TTS problem?)") }
+        delay(500)
+        val t0 = System.nanoTime()
+        c.voice.interrupts.interrupt()
+        val done = withTimeoutOrNull(2_000) { job.join(); true } ?: false
+        val ms = (System.nanoTime() - t0) / 1_000_000
+        if (done) DiagResult(DiagStatus.PASS, "Speech stopped ${ms} ms after interrupt. Barge-in by voice (saying FRIDAY while it talks) needs a device test.")
+        else fail("Speech did not stop within 2 s")
+    }
+
+    private fun followup(): DiagResult {
+        val s = c.settingsRepo.current
+        return DiagResult(
+            DiagStatus.DEVICE_TEST_REQUIRED,
+            "Follow-up is ${if (s.followUpEnabled) "ON (${s.followUpTimeoutSec} s)" else "OFF"}. Say FRIDAY, ask something, then ask a second question without saying FRIDAY.",
+        )
+    }
+
+    private fun local(): DiagResult {
+        val now = java.time.LocalDateTime.now()
+        val cases = mapOf(
+            "지금 몇 시야" to CommandType.GET_TIME, "배터리 얼마나 남았어" to CommandType.GET_BATTERY, "손전등 켜줘" to CommandType.FLASHLIGHT_ON,
+            "볼륨 올려줘" to CommandType.VOLUME_UP, "카카오톡 열어줘" to CommandType.OPEN_APP, "오늘 일정 알려줘" to CommandType.GET_TODAY_EVENTS,
+            "새 알림 있어" to CommandType.GET_NOTIFICATIONS, "다음 곡" to CommandType.NEXT_MEDIA, "오늘 브리핑" to CommandType.MORNING_BRIEF,
+            "카메라 열어줘" to CommandType.OPEN_CAMERA, "내일 오전 7시에 알람 맞춰줘" to CommandType.SET_ALARM,
+        )
+        val bad = cases.filter { (text, type) -> com.friday.assistant.command.LocalIntentParser.parse(text, now)?.type != type }
+        return if (bad.isEmpty()) pass("${cases.size}/${cases.size} sample commands recognised offline") else fail("Not recognised: ${bad.keys.joinToString()}")
+    }
+
+    private suspend fun brief(): DiagResult {
+        val r = c.router.execute(Command(CommandType.MORNING_BRIEF))
+        return if (r.ok) pass(r.subtitle.take(110)) else fail(r.subtitle)
+    }
+
+    private fun perm(): DiagResult {
+        val items = com.friday.assistant.permission.PermissionCenter.items(c.permissionSnapshot)
+        val g = items.count { it.status == com.friday.assistant.permission.PermStatus.GRANTED }
+        return pass("$g/${items.size} granted; missing: " + items.filter { it.status != com.friday.assistant.permission.PermStatus.GRANTED }.joinToString { it.title }.ifBlank { "none" })
+    }
 }
+

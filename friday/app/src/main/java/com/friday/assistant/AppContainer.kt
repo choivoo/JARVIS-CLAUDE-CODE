@@ -26,9 +26,41 @@ import com.friday.assistant.stt.AndroidSpeechRecognizerEngine
 import com.friday.assistant.stt.SpeechRecognizerEngine
 import com.friday.assistant.tts.AndroidTTSProvider
 import com.friday.assistant.tts.ElevenLabsCompatibleTTSProvider
-import com.friday.assistant.tts.FridaySpeaker
 import com.friday.assistant.tts.OpenAICompatibleTTSProvider
 import com.friday.assistant.util.NetworkMonitor
+import com.friday.assistant.util.Permissions
+import com.friday.assistant.voice.AudioFocusManager
+import com.friday.assistant.voice.Speaker
+import com.friday.assistant.voice.VoiceEngine
+import com.friday.assistant.brief.BriefingComposer
+import com.friday.assistant.calendar.AndroidCalendarProvider
+import com.friday.assistant.calendar.CalendarExecutors
+import com.friday.assistant.calendar.CalendarInsertUi
+import com.friday.assistant.calendar.CalendarProvider
+import com.friday.assistant.command.AccessChecker
+import com.friday.assistant.command.AppControlExecutors
+import com.friday.assistant.command.CommandExecutor
+import com.friday.assistant.command.CommandType
+import com.friday.assistant.core.ContextEngine
+import com.friday.assistant.device.AndroidDeviceStatusProvider
+import com.friday.assistant.device.DeviceExecutors
+import com.friday.assistant.device.DeviceStatusProvider
+import com.friday.assistant.media.AndroidMediaBackend
+import com.friday.assistant.media.MediaBackend
+import com.friday.assistant.media.MediaExecutors
+import com.friday.assistant.notification.NotificationExecutors
+import com.friday.assistant.notification.NotificationHub
+import com.friday.assistant.permission.PermissionCenter
+import com.friday.assistant.proactive.AlertKind
+import com.friday.assistant.proactive.LowBatterySource
+import com.friday.assistant.proactive.ProactiveEngine
+import com.friday.assistant.proactive.UpcomingEventSource
+import com.friday.assistant.proactive.WeatherWarningSource
+import com.friday.assistant.weather.WeatherReport
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.provider.CalendarContract
+import kotlinx.coroutines.CancellationException
 import com.friday.assistant.wake.SpeechWakeWordEngine
 import com.friday.assistant.wake.WakeWordEngine
 import com.friday.assistant.weather.OpenMeteoProvider
@@ -61,31 +93,80 @@ class AppContainer(
 
     private val androidTts by lazy { AndroidTTSProvider(context) { settingsRepo.current } }
     val androidTtsProvider get() = androidTts
-    val speaker by lazy {
-        FridaySpeaker(
-            configured = { settingsRepo.current.ttsProvider },
-            cloud = { type ->
-                val s = settingsRepo.current
-                val key = settingsRepo.ttsApiKey()
+    /** Tier A = OpenAI-compatible cloud voice, Tier B = ElevenLabs-compatible, Tier C = Android TTS (always available). */
+    val voice: VoiceEngine by lazy {
+        VoiceEngine(
+            settings = { settingsRepo.current },
+            tier = { type ->
+                val st = settingsRepo.current
                 when (type) {
-                    TtsProviderType.OPENAI_COMPATIBLE -> OpenAICompatibleTTSProvider(s, key)
-                    TtsProviderType.ELEVENLABS -> ElevenLabsCompatibleTTSProvider(s, key)
+                    TtsProviderType.OPENAI_COMPATIBLE -> settingsRepo.ttsApiKey().takeIf { it.isNotBlank() }?.let { OpenAICompatibleTTSProvider(st, it) }
+                    TtsProviderType.ELEVENLABS -> settingsRepo.ttsApiKey2().takeIf { it.isNotBlank() && st.ttsSecondaryVoice.isNotBlank() }?.let {
+                        ElevenLabsCompatibleTTSProvider(st.copy(ttsVoice = st.ttsSecondaryVoice, ttsEndpoint = "https://api.elevenlabs.io/v1", ttsModel = "eleven_flash_v2_5"), it)
+                    }
                     TtsProviderType.ANDROID -> null
                 }
             },
             fallback = androidTts,
+            focus = AudioFocusManager(context),
         )
+    }
+    val speaker: Speaker get() = voice
+
+    val notifications = NotificationHub(context)
+    val calendar: CalendarProvider = AndroidCalendarProvider(context)
+    val deviceStatus: DeviceStatusProvider = AndroidDeviceStatusProvider(context)
+    val mediaBackend: MediaBackend = AndroidMediaBackend(context)
+    val contextEngine = ContextEngine()
+    val access = object : AccessChecker {
+        override fun hasPermission(permission: String) = Permissions.has(context, permission)
+        override fun hasNotificationAccess() = NotificationHub.isAccessGranted(context)
     }
 
     val launcher = ActivityLauncher(context) { appInForeground }
+    private val locationHelper = LocationHelper(context)
+
+    /** Weather for the current location if known, else the default city; null when unavailable. */
+    suspend fun weatherOrNull(): WeatherReport? = try {
+        val c = locationHelper.lastKnown()
+        weather.fetch(if (c == null) settingsRepo.current.defaultCity else null, c?.lat, c?.lon)
+    } catch (e: CancellationException) { throw e } catch (e: Exception) { null }
+
     val router: CommandRouter by lazy {
-        CommandRouter(
-            AndroidExecutors(
-                context, launcher, AppResolver(context), weather, webSearch,
-                ContactResolver(context), LocationHelper(context), { settingsRepo.current.defaultCity },
-            ).all(),
+        val apps = AppResolver(context)
+        val insertUi = CalendarInsertUi { title, start, end ->
+            val z = java.time.ZoneId.systemDefault()
+            val i = Intent(Intent.ACTION_INSERT, CalendarContract.Events.CONTENT_URI)
+                .putExtra(CalendarContract.Events.TITLE, title)
+                .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, start.atZone(z).toInstant().toEpochMilli())
+                .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, end.atZone(z).toInstant().toEpochMilli())
+            try { launcher.launch(i, "the calendar"); true } catch (e: ActivityNotFoundException) { false }
+        }
+        val all = LinkedHashMap<CommandType, CommandExecutor>()
+        all += AndroidExecutors(
+            context, launcher, apps, weather, webSearch, ContactResolver(context), locationHelper, { settingsRepo.current.defaultCity },
+        ).all()
+        all += AppControlExecutors(context, launcher, apps).all()
+        all += DeviceExecutors(deviceStatus).all()
+        all += MediaExecutors(mediaBackend).all()
+        all += NotificationExecutors(notifications).all()
+        all += CalendarExecutors(calendar, contextEngine, insertUi).all()
+        all += BriefingComposer({ java.time.LocalDateTime.now() }, ::weatherOrNull, calendar, notifications, deviceStatus).executors()
+        CommandRouter(all, access)
+    }
+
+    val proactive: ProactiveEngine by lazy {
+        ProactiveEngine(
+            { settingsRepo.current },
+            mapOf(
+                AlertKind.LOW_BATTERY to LowBatterySource(deviceStatus),
+                AlertKind.UPCOMING_EVENT to UpcomingEventSource(calendar),
+                AlertKind.WEATHER_WARNING to WeatherWarningSource(::weatherOrNull),
+            ),
         )
     }
+
+    val permissionSnapshot get() = PermissionCenter.snapshot(context)
 
     fun aiProvider(): AIProvider {
         val s = settingsRepo.current
@@ -104,6 +185,7 @@ class AppContainer(
             aiProvider = ::aiProvider,
             router = router,
             speaker = speaker,
+            contextEngine = contextEngine,
             repo = conversations,
             isOnline = network::isOnline,
         )

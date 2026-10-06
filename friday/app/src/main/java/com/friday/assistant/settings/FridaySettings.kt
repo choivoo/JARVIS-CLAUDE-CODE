@@ -12,6 +12,8 @@ enum class TtsProviderType(val label: String) {
     ELEVENLABS("ElevenLabs-compatible"),
 }
 
+enum class AudioFocusMode(val label: String) { DUCK("Lower music volume"), PAUSE("Pause music"), OFF("Do nothing") }
+
 enum class AccentTheme(val label: String) { VIOLET("Violet"), MAGENTA("Magenta"), BLUE("Blue") }
 
 data class FridaySettings(
@@ -19,7 +21,6 @@ data class FridaySettings(
     val aiModel: String = AiProviderType.GEMINI.defaultModel,
     val aiEndpoint: String = AiProviderType.GEMINI.defaultEndpoint,
 
-    val ttsProvider: TtsProviderType = TtsProviderType.ANDROID,
     val ttsEndpoint: String = "https://api.openai.com/v1",
     val ttsModel: String = "gpt-4o-mini-tts",
     /** Cloud voice name (OpenAI: "nova", ElevenLabs: voice id). */
@@ -28,6 +29,21 @@ data class FridaySettings(
     val androidVoice: String = "",
     val ttsSpeed: Float = 1.0f,
     val ttsPitch: Float = 1.08f,
+
+    /** Tier order for speech output. Tiers without credentials are skipped; Android TTS is always the last resort. */
+    val ttsPriority: List<TtsProviderType> = listOf(TtsProviderType.OPENAI_COMPATIBLE, TtsProviderType.ELEVENLABS, TtsProviderType.ANDROID),
+    val ttsSecondaryVoice: String = "",
+    val audioFocusMode: AudioFocusMode = AudioFocusMode.DUCK,
+    val bargeIn: Boolean = true,
+    val subtitleDurationMs: Int = 2500,
+    val subtitleScale: Float = 1.0f,
+    val alwaysShowSubtitle: Boolean = false,
+    val followUpEnabled: Boolean = true,
+    val followUpTimeoutSec: Int = 8,
+    val proactiveLowBattery: Boolean = false,
+    val proactiveUpcomingEvent: Boolean = false,
+    val proactiveWeather: Boolean = false,
+    val ambientMode: Boolean = false,
 
     val sttEngine: String = "android",
     val wakeWord: String = "FRIDAY",

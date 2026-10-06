@@ -38,7 +38,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.friday.assistant.permission.PermissionCenter
+import com.friday.assistant.core.CoreState
 import com.friday.assistant.service.FridayService
+import com.friday.assistant.ui.ambient.AmbientScreen
 import com.friday.assistant.ui.ConversationViewModel
 import com.friday.assistant.ui.DiagnosticsViewModel
 import com.friday.assistant.ui.HomeViewModel
@@ -88,13 +91,24 @@ fun FridayRoot(container: AppContainer, activity: android.content.Context) {
         var booted by rememberSaveable { mutableStateOf(false) }
         Box(Modifier.fillMaxSize().background(if (settings.amoled) FridayColors.Amoled else FridayColors.Dark)) {
             if (!booted) BootScreen(onFinished = { booted = true })
-            else MainShell(container, activity)
+            else {
+                var ambient by rememberSaveable { mutableStateOf(settings.ambientMode) }
+                if (ambient) {
+                    val vm: HomeViewModel = viewModel(factory = factory { HomeViewModel(container) })
+                    val core by vm.core.collectAsStateWithLifecycle()
+                    val sub by vm.subtitle.collectAsStateWithLifecycle()
+                    val mic by vm.micLevel.collectAsStateWithLifecycle()
+                    val amp by vm.amplitude.collectAsStateWithLifecycle()
+                    AmbientScreen(core, sub.subtitle, settings.subtitleScale, { if (core == CoreState.LISTENING) mic else amp }, onExit = { ambient = false })
+                } else MainShell(container, activity, onAmbient = { ambient = true })
+            }
         }
     }
 }
 
 @Composable
-private fun MainShell(container: AppContainer, context: android.content.Context) {
+private fun MainShell(container: AppContainer, context: android.content.Context, onAmbient: () -> Unit) {
+    val homeVm: HomeViewModel = viewModel(factory = factory { HomeViewModel(container) })
     val settings by container.settingsRepo.settings.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
     val tabs = Tab.entries.filter { it != Tab.DIAG || settings.developerDiagnostics }
@@ -131,8 +145,8 @@ private fun MainShell(container: AppContainer, context: android.content.Context)
                     FridayService.stop(context)
                 }
             },
-            requestPermission = { permLauncher.launch(it) },
-            isGranted = { Permissions.has(context, it) },
+            requestPermission = { PermissionCenter.markRequested(context, it); permLauncher.launch(it) },
+            openSettings = { item -> runCatching { context.startActivity(PermissionCenter.settingsIntent(context, item)) } },
         )
     }
 
@@ -153,8 +167,9 @@ private fun MainShell(container: AppContainer, context: android.content.Context)
         Box(Modifier.fillMaxSize().statusBarsPadding().let { it }.then(Modifier.padding(pad))) {
             when (tab) {
                 Tab.HOME -> HomeScreen(
-                    viewModel(factory = factory { HomeViewModel(container) }),
-                    onNeedMic = { go -> if (Permissions.mic(context)) go() else { afterMic = go; micLauncher.launch(Manifest.permission.RECORD_AUDIO) } },
+                    homeVm,
+                    onNeedMic = { go -> if (Permissions.mic(context)) go() else { PermissionCenter.markRequested(context, Manifest.permission.RECORD_AUDIO); afterMic = go; micLauncher.launch(Manifest.permission.RECORD_AUDIO) } },
+                    onAmbient = onAmbient,
                 )
                 Tab.CHAT -> ConversationScreen(viewModel(factory = factory { ConversationViewModel(container) }))
                 Tab.DIAG -> DiagnosticsScreen(viewModel(factory = factory { DiagnosticsViewModel(container) }))

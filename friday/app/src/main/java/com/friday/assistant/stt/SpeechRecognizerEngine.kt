@@ -20,6 +20,7 @@ interface SpeechRecognizerEngine {
     val partial: StateFlow<String>
     /** Microphone loudness 0f..1f while listening, for the HUD waveform. */
     val level: StateFlow<Float>
-    suspend fun listenOnce(): SttResult
+    /** [timeoutMs] caps how long to wait for the result (null = engine default). */
+    suspend fun listenOnce(timeoutMs: Long? = null): SttResult
     fun cancel()
 }

@@ -39,7 +39,7 @@ import kotlin.math.sin
  * [level] is a 0..1 loudness provider (microphone while listening, TTS while speaking).
  */
 @Composable
-fun FridayCore(state: CoreState, level: () -> Float, modifier: Modifier = Modifier) {
+fun FridayCore(state: CoreState, level: () -> Float, modifier: Modifier = Modifier, contextLevel: Float = 0f) {
     val e = LocalEnergy.current
     val still = LocalReduceMotion.current
     val t = if (still) remember { mutableFloatStateOf(0.25f) } else rememberInfiniteTransition(label = "core").let { tr ->
@@ -50,7 +50,7 @@ fun FridayCore(state: CoreState, level: () -> Float, modifier: Modifier = Modifi
         0f, 1f, infiniteRepeatable(tween(if (state == CoreState.IDLE) 3200 else 1100), RepeatMode.Reverse), label = "p",
     )
     Box(modifier.fillMaxWidth().aspectRatio(1f).semantics { contentDescription = "FRIDAY core ${state.name}" }) {
-        Canvas(Modifier.matchParentSize()) { drawCore(state, t, pulse, level(), e.primary, e.secondary, e.tertiary) }
+        Canvas(Modifier.matchParentSize()) { drawCore(state, t, pulse, level(), e.primary, e.secondary, e.tertiary, contextLevel) }
     }
 }
 
@@ -63,7 +63,7 @@ private fun durationFor(s: CoreState) = when (s) {
 
 private fun DrawScope.drawCore(
     state: CoreState, t: State<Float>, pulse: State<Float>, level: Float,
-    primary: Color, secondary: Color, tertiary: Color,
+    primary: Color, secondary: Color, tertiary: Color, contextLevel: Float,
 ) {
     val c = center
     val r = size.minDimension / 2f
@@ -80,6 +80,9 @@ private fun DrawScope.drawCore(
         else -> 0.2f + 0.1f * p
     }
     drawCircle(Brush.radialGradient(listOf(tint.copy(alpha = glow * fade), Color.Transparent), c, r), r, c)
+
+    // context ring: fills as FRIDAY holds more short-term context for follow-ups
+    if (contextLevel > 0f) arc(c, r * 0.995f, -90f, 360f * contextLevel.coerceIn(0f, 1f), tertiary.copy(alpha = 0.75f * fade), 3f)
 
     // outer thin ring with ticks
     drawCircle(tint.copy(alpha = 0.35f * fade), r * 0.96f, c, style = Stroke(1.2f))

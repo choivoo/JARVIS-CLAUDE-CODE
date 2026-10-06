@@ -88,5 +88,18 @@ class RepositoryTest {
         assertEquals(1.3f, reloaded.ttsSpeed, 0.001f)
         s.setAiApiKey("")
         assertEquals("", s.aiApiKey())
+
+        s.update { it.copy(followUpTimeoutSec = 12, subtitleScale = 1.4f, alwaysShowSubtitle = true, bargeIn = false,
+            audioFocusMode = com.friday.assistant.settings.AudioFocusMode.PAUSE, proactiveLowBattery = true,
+            ttsPriority = listOf(com.friday.assistant.settings.TtsProviderType.ELEVENLABS, com.friday.assistant.settings.TtsProviderType.ANDROID)) }
+        s.setTtsApiKey2("el-secret")
+        val again = SettingsRepository.create(ctx, secrets)
+        assertEquals(12, again.current.followUpTimeoutSec)
+        assertEquals(1.4f, again.current.subtitleScale, 0.001f)
+        assertTrue(again.current.alwaysShowSubtitle && !again.current.bargeIn && again.current.proactiveLowBattery)
+        assertEquals(com.friday.assistant.settings.AudioFocusMode.PAUSE, again.current.audioFocusMode)
+        assertEquals(listOf(com.friday.assistant.settings.TtsProviderType.ELEVENLABS, com.friday.assistant.settings.TtsProviderType.ANDROID), again.current.ttsPriority)
+        assertFalse(ctx.getSharedPreferences("friday_settings", Context.MODE_PRIVATE).all.toString().contains("el-secret"))
+        assertEquals("el-secret", again.ttsApiKey2())
     }
 }

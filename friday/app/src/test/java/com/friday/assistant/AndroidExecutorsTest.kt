@@ -47,9 +47,18 @@ class AndroidExecutorsTest {
     private fun router(now: LocalDateTime = LocalDateTime.of(2026, 10, 6, 9, 0), foreground: Boolean = true): CommandRouter {
         val weather = object : WeatherProvider { override suspend fun fetch(city: String?, latitude: Double?, longitude: Double?) = weatherResult() }
         val search = object : WebSearchProvider { override suspend fun search(query: String, limit: Int) = searchResult() }
-        return CommandRouter(
-            AndroidExecutors(app, ActivityLauncher(app) { foreground }, AppResolver(app), weather, search, ContactResolver(app), LocationHelper(app), { "Seoul" }) { now }.all(),
-        )
+        val launcher = ActivityLauncher(app) { foreground }
+        val apps = AppResolver(app)
+        val all = LinkedHashMap<CommandType, com.friday.assistant.command.CommandExecutor>()
+        all += AndroidExecutors(app, launcher, apps, weather, search, ContactResolver(app), LocationHelper(app), { "Seoul" }) { now }.all()
+        all += com.friday.assistant.command.AppControlExecutors(app, launcher, apps).all()
+        all += com.friday.assistant.device.DeviceExecutors(FakeDevice()).all()
+        all += com.friday.assistant.media.MediaExecutors(FakeMedia(), settleMs = 0).all()
+        all += com.friday.assistant.notification.NotificationExecutors(FakeNotifications()).all()
+        val ctx = com.friday.assistant.core.ContextEngine()
+        all += com.friday.assistant.calendar.CalendarExecutors(FakeCalendar(), ctx, { _, _, _ -> true }, { now }).all()
+        all += com.friday.assistant.brief.BriefingComposer({ now }, { weatherResult() }, FakeCalendar(), FakeNotifications(), FakeDevice()).executors()
+        return CommandRouter(all)
     }
 
     private fun started(): Intent? = shadowOf(app).nextStartedActivity
@@ -211,13 +220,6 @@ class AndroidExecutorsTest {
         assertTrue(r.ok)
         assertTrue(r.speech.contains("notification"))
         assertNull("no activity may be started from the background", started())
-    }
-
-    @Test fun mediaKeysReportWhatActuallyHappened() = runTest {
-        val r = router().execute(Command(CommandType.PLAY_MEDIA))
-        // Nothing is playing in the test environment, so FRIDAY must not claim success.
-        assertEquals(ResultStatus.FAILED, r.status)
-        assertTrue(r.speech.contains("nothing started"))
     }
 
     @Test fun flashlightWithoutHardwareFailsCleanly() = runTest {

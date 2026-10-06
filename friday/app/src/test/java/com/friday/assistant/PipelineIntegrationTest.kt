@@ -85,7 +85,9 @@ class PipelineIntegrationTest {
         assertEquals(2, ai.prompts.size)
         assertTrue("tool result must reach the AI", ai.prompts[1].last().content.contains("rain_chance=70%"))
         assertEquals(listOf("Yes, bring an umbrella. Seventy percent chance of rain."), r.speaker.spoken)
-        assertTrue(r.subtitles.any { it.subtitle == "네, 우산을 챙기세요. 비 올 확률 70%입니다." && it.speaking })
+        // the Korean subtitle follows the English voice sentence by sentence
+        val spoken = r.subtitles.filter { it.speaking }.map { it.subtitle }.distinct()
+        assertEquals(listOf("네, 우산을 챙기세요.", "비 올 확률 70%입니다."), spoken)
         assertEquals("오늘 비 올 것 같아?", r.subtitles.first { it.user.isNotEmpty() }.user)
         assertTrue(r.cores.containsAll(listOf(CoreState.LISTENING, CoreState.THINKING, CoreState.EXECUTING, CoreState.SPEAKING)))
         assertEquals(CoreState.IDLE, r.controller.core.value)
@@ -188,10 +190,10 @@ class PipelineIntegrationTest {
     }
 
     @Test fun callRequiresConfirmationThenExecutes() = runTest {
-        val call = RecordingExecutor { c, ok ->
-            if (!ok) CommandResult.confirm("Would you like me to call Mom?", "엄마에게 전화를 걸까요?", c.copy(params = c.params + ("number" to "010")))
-            else CommandResult.ok("Calling Mom.", "엄마에게 전화합니다.")
-        }
+        val call = RecordingConfirmable(
+            { c -> CommandResult.confirm("Would you like me to call Mom?", "엄마에게 전화를 걸까요?", c.copy(params = c.params + ("number" to "010"))) },
+            { CommandResult.ok("Calling Mom.", "엄마에게 전화합니다.") },
+        )
         val ai = FakeAi(json("Sure.", "네.", """{"type":"CALL_CONTACT_REQUEST","name":"엄마"}"""))
         val r = rig(FakeStt(SttResult.Text("엄마한테 전화해줘"), SttResult.Text("응")), ai, routerWith(CommandType.CALL_CONTACT_REQUEST to call))
         r.controller.startListening(); advanceUntilIdle()
@@ -203,7 +205,7 @@ class PipelineIntegrationTest {
     }
 
     @Test fun decliningConfirmationCancels() = runTest {
-        val call = RecordingExecutor { c, ok -> if (!ok) CommandResult.confirm("Call Mom?", "전화할까요?", c) else CommandResult.ok("Calling.", "전화") }
+        val call = RecordingConfirmable({ c -> CommandResult.confirm("Call Mom?", "전화할까요?", c) }, { CommandResult.ok("Calling.", "전화") })
         val ai = FakeAi(json("Sure.", "네.", """{"type":"CALL_CONTACT_REQUEST","name":"엄마"}"""))
         val r = rig(FakeStt(SttResult.Text("엄마한테 전화해줘"), SttResult.Text("아니 취소")), ai, routerWith(CommandType.CALL_CONTACT_REQUEST to call))
         r.controller.startListening(); advanceUntilIdle()

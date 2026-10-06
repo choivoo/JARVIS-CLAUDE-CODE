@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Icon
@@ -34,13 +35,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.friday.assistant.core.CoreState
 import com.friday.assistant.ui.HomeViewModel
 import com.friday.assistant.ui.components.FridayCore
+import com.friday.assistant.command.InfoCard
 import com.friday.assistant.ui.components.GlassPanel
+import com.friday.assistant.ui.components.InfoCardPanel
 import com.friday.assistant.ui.components.HudLabel
 import com.friday.assistant.ui.theme.FridayColors
 import com.friday.assistant.ui.theme.LocalEnergy
 
 @Composable
-fun HomeScreen(vm: HomeViewModel, onNeedMic: (then: () -> Unit) -> Unit) {
+fun HomeScreen(vm: HomeViewModel, onNeedMic: (then: () -> Unit) -> Unit, onAmbient: () -> Unit) {
     val core by vm.core.collectAsStateWithLifecycle()
     val sub by vm.subtitle.collectAsStateWithLifecycle()
     val partial by vm.partial.collectAsStateWithLifecycle()
@@ -48,11 +51,14 @@ fun HomeScreen(vm: HomeViewModel, onNeedMic: (then: () -> Unit) -> Unit) {
     val service by vm.serviceRunning.collectAsStateWithLifecycle()
     val mic by vm.micLevel.collectAsStateWithLifecycle()
     val amp by vm.amplitude.collectAsStateWithLifecycle()
+    val card by vm.card.collectAsStateWithLifecycle()
+    val ctx by vm.contextSize.collectAsStateWithLifecycle()
     HomeContent(
         core = core, user = if (core == CoreState.LISTENING && partial.isNotBlank()) partial else sub.user,
         subtitle = sub.subtitle, background = service, wakeWord = settings.wakeWord,
         level = { if (core == CoreState.LISTENING) mic else amp },
         onMic = { onNeedMic { vm.listen() } }, onStop = vm::stop,
+        card = card, subtitleScale = settings.subtitleScale, contextLevel = ctx / 4f, onAmbient = onAmbient,
     )
 }
 
@@ -60,26 +66,33 @@ fun HomeScreen(vm: HomeViewModel, onNeedMic: (then: () -> Unit) -> Unit) {
 fun HomeContent(
     core: CoreState, user: String, subtitle: String, background: Boolean, wakeWord: String,
     level: () -> Float, onMic: () -> Unit, onStop: () -> Unit,
+    card: InfoCard? = null, subtitleScale: Float = 1f, contextLevel: Float = 0f, onAmbient: () -> Unit = {},
 ) {
     val e = LocalEnergy.current
     val active = core != CoreState.IDLE && core != CoreState.OFFLINE
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("FRIDAY", color = e.primary, fontSize = 18.sp, letterSpacing = 8.sp, fontWeight = FontWeight.Light)
-            HudLabel(if (background) "● BACKGROUND ON" else "○ BACKGROUND OFF", color = if (background) FridayColors.Ok else FridayColors.TextDim)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                HudLabel(if (background) "● BACKGROUND ON" else "○ BACKGROUND OFF", color = if (background) FridayColors.Ok else FridayColors.TextDim)
+                IconButton(onClick = onAmbient) {
+                    Icon(Icons.Filled.Bedtime, contentDescription = "Ambient mode", tint = FridayColors.TextDim)
+                }
+            }
         }
         Spacer(Modifier.height(8.dp))
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            FridayCore(core, level, Modifier.fillMaxWidth(0.82f))
+            FridayCore(core, level, Modifier.fillMaxWidth(0.82f), contextLevel)
         }
         HudLabel(stateLabel(core, wakeWord), color = if (core == CoreState.ERROR) FridayColors.Error else e.secondary)
-        Spacer(Modifier.height(12.dp))
+        InfoCardPanel(card, Modifier.padding(bottom = 8.dp))
+        Spacer(Modifier.height(4.dp))
         GlassPanel(Modifier.fillMaxWidth().height(132.dp)) {
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                 if (user.isNotBlank()) Text("“$user”", color = FridayColors.TextDim, fontSize = 14.sp, textAlign = TextAlign.Center, maxLines = 2)
                 if (subtitle.isNotBlank()) {
                     Spacer(Modifier.height(6.dp))
-                    Text(subtitle, color = FridayColors.Text, fontSize = 20.sp, textAlign = TextAlign.Center, maxLines = 4, modifier = Modifier.semantics { contentDescription = "subtitle" })
+                    Text(subtitle, color = FridayColors.Text, fontSize = (20 * subtitleScale).sp, textAlign = TextAlign.Center, maxLines = 4, modifier = Modifier.semantics { contentDescription = "subtitle" })
                 } else if (user.isBlank()) {
                     Text("“$wakeWord”라고 부르거나 마이크를 누르세요", color = FridayColors.TextDim, fontSize = 14.sp, textAlign = TextAlign.Center)
                 }

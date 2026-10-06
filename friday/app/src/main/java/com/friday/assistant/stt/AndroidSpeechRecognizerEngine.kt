@@ -24,7 +24,7 @@ import kotlin.coroutines.resume
 class AndroidSpeechRecognizerEngine(
     private val context: Context,
     private val language: String = "ko-KR",
-    private val timeoutMs: Long = 12_000,
+    private val defaultTimeoutMs: Long = 12_000,
 ) : SpeechRecognizerEngine {
     private val _state = MutableStateFlow(SttState.IDLE)
     override val state: StateFlow<SttState> = _state.asStateFlow()
@@ -35,7 +35,7 @@ class AndroidSpeechRecognizerEngine(
     private var recognizer: SpeechRecognizer? = null
     private var active: CompletableDeferred<SttResult>? = null
 
-    override suspend fun listenOnce(): SttResult = withContext(Dispatchers.Main.immediate) {
+    override suspend fun listenOnce(timeoutMs: Long?): SttResult = withContext(Dispatchers.Main.immediate) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             _state.value = SttState.ERROR
             return@withContext SttResult.Failure(SttError.NO_PERMISSION)
@@ -87,7 +87,7 @@ class AndroidSpeechRecognizerEngine(
         )
         _state.value = SttState.LISTENING
         try {
-            val r = withTimeoutOrNull(timeoutMs) { result.await() } ?: SttResult.Failure(SttError.TIMEOUT)
+            val r = withTimeoutOrNull(timeoutMs ?: defaultTimeoutMs) { result.await() } ?: SttResult.Failure(SttError.TIMEOUT)
             _state.value = if (r is SttResult.Failure) SttState.ERROR else SttState.IDLE
             r
         } finally {
