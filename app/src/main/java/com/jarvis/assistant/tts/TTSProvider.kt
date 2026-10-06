@@ -14,6 +14,7 @@ data class VoiceSettings(
     val endpoint: String,
     val model: String,
     val apiKey: String?,
+    val maleOnly: Boolean = true,
 )
 
 enum class TtsError { NOT_CONFIGURED, NETWORK, ENGINE, EMPTY }

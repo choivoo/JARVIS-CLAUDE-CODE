@@ -107,7 +107,7 @@ fun SettingsScreen(
     var voices by remember { mutableStateOf<List<VoiceOption>>(emptyList()) }
     var testMessage by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) { voices = speaker.listAndroidVoices() }
+    LaunchedEffect(settings.maleVoiceOnly) { voices = speaker.listAndroidVoices(settings.maleVoiceOnly) }
 
     fun save(key: String, value: String) = scope.launch { repo.put(key, value) }
     fun save(key: String, value: Boolean) = scope.launch { repo.put(key, value) }
@@ -184,6 +184,11 @@ fun SettingsScreen(
                         color = colors.textDim, fontSize = 11.sp,
                     )
                     if (settings.ttsProvider == TtsProviderType.ANDROID) {
+                        SwitchRow(
+                            "Male voices only",
+                            "Never pick or list voices known to be female (♂ = known male). Turn off to see every English voice.",
+                            settings.maleVoiceOnly,
+                        ) { save(SettingKeys.MALE_VOICE_ONLY, it) }
                         val options = listOf("" to "Auto (JARVIS profile)") + voices.map { it.id to it.label.take(34) }
                         DropdownRow(
                             "Voice",

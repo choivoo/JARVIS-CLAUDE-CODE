@@ -32,8 +32,7 @@ object VoiceFx {
                 x = Biquad.peaking(rate, 2800f, 1.0f, 3.0f).run(x)    // clarity / presence
                 x = Biquad.highShelf(rate, 7500f, 1.5f).run(x)        // air
                 x = compress(x, rate, thresholdDb = -20f, ratio = 3.2f, attackMs = 6f, releaseMs = 90f)
-                x = echoes(x, rate, listOf(0.011f to 0.20f, 0.023f to 0.10f))     // digital double
-                x = echoes(x, rate, listOf(0.041f to 0.07f, 0.067f to 0.045f))    // room
+                x = echoes(x, rate, listOf(0.041f to 0.04f, 0.067f to 0.025f))    // room
             }
             VoiceStyle.ROBOTIC -> {
                 x = Biquad.lowShelf(rate, 220f, 3.0f).run(x)

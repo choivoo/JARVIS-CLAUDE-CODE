@@ -37,8 +37,32 @@ class AndroidTTSProvider(private val context: Context) : TTSProvider {
     private suspend fun engine(): TextToSpeech = initMutex.withLock {
         tts?.let { return it }
         val ready = CompletableDeferred<Boolean>()
-        val created = withContext(Dispatchers.Main) {
-            TextToSpeech(context.applicationContext) { status -> ready.complete(status == TextToSpeech.SUCCESS) }
+        // Prefer Google's engine: it ships the en-GB male voices. Fall back to the device default.
+        val googleInstalled = try {
+            context.packageManager.getPackageInfo(GOOGLE_TTS, 0); true
+        } catch (e: Exception) {
+            false
+        }
+        var created = withContext(Dispatchers.Main) {
+            if (googleInstalled) {
+                TextToSpeech(context.applicationContext, { status -> ready.complete(status == TextToSpeech.SUCCESS) }, GOOGLE_TTS)
+            } else {
+                TextToSpeech(context.applicationContext) { status -> ready.complete(status == TextToSpeech.SUCCESS) }
+            }
+        }
+        if (googleInstalled && !(try { withTimeout(8_000) { ready.await() } } catch (e: Exception) { false })) {
+            created.shutdown()
+            val retry = CompletableDeferred<Boolean>()
+            created = withContext(Dispatchers.Main) {
+                TextToSpeech(context.applicationContext) { status -> retry.complete(status == TextToSpeech.SUCCESS) }
+            }
+            val ok2 = try { withTimeout(8_000) { retry.await() } } catch (e: Exception) { false }
+            if (!ok2) {
+                created.shutdown()
+                throw TtsException(TtsError.ENGINE, "Text-to-speech engine unavailable")
+            }
+            tts = created
+            return created
         }
         val ok = try {
             withTimeout(8_000) { ready.await() }
@@ -54,12 +78,16 @@ class AndroidTTSProvider(private val context: Context) : TTSProvider {
     }
 
     /** English voices installed on the device, best JARVIS candidates first. */
-    suspend fun listVoices(): List<VoiceOption> = try {
+    suspend fun listVoices(maleOnly: Boolean = false): List<VoiceOption> = try {
         val engine = engine()
         (engine.voices ?: emptySet())
             .filter { it.locale.language == "en" }
+            .filter { !maleOnly || gender(it) != Gender.FEMALE }
             .sortedByDescending { score(it) }
-            .map { VoiceOption(it.name, "${it.name}  (${it.locale.displayCountry.ifEmpty { it.locale.language }})") }
+            .map {
+                val g = when (gender(it)) { Gender.MALE -> "♂ "; Gender.FEMALE -> "♀ "; Gender.UNKNOWN -> "" }
+                VoiceOption(it.name, "$g${it.name}  (${it.locale.displayCountry.ifEmpty { it.locale.language }})")
+            }
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -111,8 +139,10 @@ class AndroidTTSProvider(private val context: Context) : TTSProvider {
         if (langResult == TextToSpeech.LANG_MISSING_DATA || langResult == TextToSpeech.LANG_NOT_SUPPORTED) {
             engine.setLanguage(Locale.US)
         }
-        val voices = engine.voices.orEmpty().filter { it.locale.language == "en" }
-        val chosen = voices.firstOrNull { it.name == settings.voice } ?: voices.maxByOrNull { score(it) }
+        val all = engine.voices.orEmpty().filter { it.locale.language == "en" }
+        // "Male only": never auto-pick a known female voice while any other voice is available.
+        val voices = if (settings.maleOnly) all.filter { gender(it) != Gender.FEMALE }.ifEmpty { all } else all
+        val chosen = all.firstOrNull { it.name == settings.voice } ?: voices.maxByOrNull { score(it) }
         var pitch = settings.pitch
         if (chosen != null) {
             // No known-male voice installed: lower the pitch so an unknown or female voice sounds less feminine.
@@ -165,6 +195,7 @@ class AndroidTTSProvider(private val context: Context) : TTSProvider {
     companion object {
         // Google TTS variant codes. en-GB: gbb, gbd, rjs are male; gba, gbc, gbg, gbf female.
         // en-US: iol, iom, tpd, sfg(f) ... only the commonly known ones are listed.
+        private const val GOOGLE_TTS = "com.google.android.tts"
         private val maleMarkers = listOf(
             "-gbb-", "-gbd-", "-rjs-", "-iol-", "-iom-", "-tpd-", "-ause-", "-aub-", "-aud-", "-ieh-",
             "smtm", "male", "_m_", "-m-",

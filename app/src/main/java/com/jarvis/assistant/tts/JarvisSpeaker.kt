@@ -39,7 +39,7 @@ class JarvisSpeaker(
 ) : SpeechOutput {
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
-    suspend fun listAndroidVoices(): List<VoiceOption> = android.listVoices()
+    suspend fun listAndroidVoices(maleOnly: Boolean = false): List<VoiceOption> = android.listVoices(maleOnly)
 
     /** Suspends until the whole text has been spoken. Throws [TtsException] only if every path failed. */
     override suspend fun speak(text: String) {
@@ -114,6 +114,7 @@ class JarvisSpeaker(
             endpoint = if (isSelected) settings.ttsEndpoint else provider.defaultEndpoint,
             model = if (isSelected) settings.ttsModel else provider.defaultModel,
             apiKey = if (provider == TtsProviderType.ANDROID) null else settingsRepo.ttsApiKey(provider),
+            maleOnly = settings.maleVoiceOnly,
         )
     }
 

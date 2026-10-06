@@ -15,8 +15,8 @@ android {
         targetSdk = 35
         // Hand tracking ships native code; keep the APK to the ABIs real phones use.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
-        versionCode = 5
-        versionName = "1.3.0"
+        versionCode = 6
+        versionName = "1.3.1"
     }
 
     // One fixed key for every build (local and CI) so a newer APK installs over an older one as an update.

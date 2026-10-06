@@ -128,6 +128,7 @@ object SettingKeys {
     const val WAKE_MODE = "wake.mode"
     const val KEEP_AWAKE = "wake.keepAwake"
     const val WAKE_SCREEN = "wake.screen"
+    const val MALE_VOICE_ONLY = "tts.maleOnly"
     const val WAKE_HAPTIC = "wake.haptic"
     const val USER_TITLE = "user.title"
     const val PROXIMITY_GESTURES = "gesture.proximity.enabled"
@@ -176,6 +177,7 @@ data class AppSettings(
     val keepAwakeStandby: Boolean = true,
     /** Turn the screen on and show JARVIS over the lock screen when called. */
     val wakeScreen: Boolean = true,
+    val maleVoiceOnly: Boolean = true,
     val voiceStyle: VoiceStyle = VoiceStyle.JARVIS,
     /** Run clear-cut device commands locally without waiting for the AI (faster, works offline, no API cost). */
     val localShortcuts: Boolean = true,
@@ -235,6 +237,7 @@ data class AppSettings(
                 wakeMode = WakeMode.values().firstOrNull { it.name == enum(SettingKeys.WAKE_MODE) } ?: WakeMode.CALL,
                 keepAwakeStandby = bool(SettingKeys.KEEP_AWAKE, true),
                 wakeScreen = bool(SettingKeys.WAKE_SCREEN, true),
+                maleVoiceOnly = bool(SettingKeys.MALE_VOICE_ONLY, true),
                 voiceStyle = VoiceStyle.values().firstOrNull { it.name == enum(SettingKeys.VOICE_STYLE) } ?: VoiceStyle.JARVIS,
                 uiSounds = bool(SettingKeys.UI_SOUNDS, true),
                 localShortcuts = bool(SettingKeys.LOCAL_SHORTCUTS, true),
