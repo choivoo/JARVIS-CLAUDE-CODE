@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- HTTPS is used for every cloud service. Cleartext is permitted only so a self-hosted Ollama server
+     on the home LAN (http://192.168.x.x:11434) can be reached; there is no way to whitelist an IP range here. -->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <base-config cleartextTrafficPermitted="true" tools:ignore="InsecureBaseConfiguration" />
+</network-security-config>

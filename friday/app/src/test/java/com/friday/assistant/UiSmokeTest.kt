@@ -1,0 +1,110 @@
+package com.friday.assistant
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import com.friday.assistant.core.CoreState
+import com.friday.assistant.data.MessageEntity
+import com.friday.assistant.diag.DiagResult
+import com.friday.assistant.diag.DiagStatus
+import com.friday.assistant.diag.DiagTest
+import com.friday.assistant.settings.FridaySettings
+import com.friday.assistant.ui.boot.BootScreen
+import com.friday.assistant.ui.conversation.ConversationContent
+import com.friday.assistant.ui.diag.DiagnosticsContent
+import com.friday.assistant.ui.home.HomeContent
+import com.friday.assistant.ui.settings.SettingsActions
+import com.friday.assistant.ui.settings.SettingsContent
+import com.friday.assistant.ui.theme.FridayTheme
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+
+/**
+ * Renders the real screens. The theme sets reduce-motion so the HUD draws static frames and Compose can reach idle
+ * (infinite animations would otherwise make the test clock wait forever).
+ */
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], qualifiers = "w411dp-h891dp-xxhdpi")
+class UiSmokeTest {
+    @get:Rule val compose = createComposeRule()
+
+    private fun show(content: @androidx.compose.runtime.Composable () -> Unit) =
+        compose.setContent { FridayTheme(reduceMotion = true) { content() } }
+
+    @Test fun startupSequenceFinishes() {
+        var finished = false
+        show { BootScreen(onFinished = { finished = true }, stepMs = 10L) }
+        repeat(60) { compose.mainClock.advanceTimeBy(16) } // frame by frame so each boot line is rendered
+        compose.waitForIdle()
+        assertTrue(finished)
+        compose.onNodeWithText("FRIDAY ONLINE").assertExists()
+    }
+
+    @Test fun homeHudRendersEveryCoreState() {
+        var state by mutableStateOf(CoreState.IDLE)
+        show { HomeContent(state, "배터리 얼마나 남았어?", "현재 배터리는 72%입니다.", true, "FRIDAY", { 0.5f }, {}, {}) }
+        CoreState.entries.forEach { s -> state = s; compose.waitForIdle() }
+        compose.onNodeWithText("현재 배터리는 72%입니다.").assertIsDisplayed()
+        compose.onNodeWithText("“배터리 얼마나 남았어?”").assertIsDisplayed()
+    }
+
+    @Test fun homeMicButtonInvokesCallback() {
+        var clicks = 0
+        show { HomeContent(CoreState.IDLE, "", "", false, "FRIDAY", { 0f }, { clicks++ }, {}) }
+        compose.onNodeWithContentDescription("Talk to FRIDAY").performClick()
+        assertEquals(1, clicks)
+    }
+
+    @Test fun homeStopButtonWhileSpeaking() {
+        var stops = 0
+        show { HomeContent(CoreState.SPEAKING, "", "안녕하세요.", true, "FRIDAY", { 0.3f }, {}, { stops++ }) }
+        compose.onNodeWithContentDescription("Stop").performClick()
+        assertEquals(1, stops)
+    }
+
+    @Test fun settingsRenders() {
+        val actions = SettingsActions({}, {}, { false })
+        show {
+            SettingsContent(FridaySettings(), hasAiKey = false, hasTtsKey = false, voices = listOf("en-us-x-tpf-local"), message = null,
+                actions = actions, update = {}, saveAiKey = {}, saveTtsKey = {}, loadVoices = {}, preview = {})
+        }
+        compose.onNodeWithText("Background Assistant").assertExists()
+        compose.onNodeWithText("AI Model").assertExists()
+    }
+
+    @Test fun conversationRendersMessagesAndEmptyState() {
+        val msgs = listOf(
+            MessageEntity(1, 1, "user", "유튜브 열어줘", "", 1),
+            MessageEntity(2, 1, "assistant", "Opening YouTube.", "유튜브를 실행합니다.", 2),
+        )
+        var list by mutableStateOf(msgs)
+        show { ConversationContent(list, {}, {}) }
+        compose.onNodeWithText("유튜브를 실행합니다.").assertIsDisplayed()
+        list = emptyList()
+        compose.waitForIdle()
+        compose.onNodeWithText("대화 기록이 없습니다.").assertIsDisplayed()
+    }
+
+    @Test fun diagnosticsRendersResults() {
+        val tests = listOf(DiagTest("a", "Microphone Test", "hint"), DiagTest("b", "AI API Test", "hint"), DiagTest("c", "Weather Test", "hint"))
+        val results = mapOf(
+            "a" to DiagResult(DiagStatus.PASS, "ok"), "b" to DiagResult(DiagStatus.NOT_CONFIGURED, "No API key"), "c" to DiagResult(DiagStatus.FAIL, "offline"),
+        )
+        show { DiagnosticsContent(tests, results, null, {}, {}) }
+        compose.onNodeWithText("PASS").assertIsDisplayed()
+        compose.onNodeWithText("NOT CONFIGURED").assertIsDisplayed()
+        compose.onNodeWithText("FAIL").assertIsDisplayed()
+    }
+}
