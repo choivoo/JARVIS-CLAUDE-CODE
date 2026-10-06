@@ -78,7 +78,7 @@ class VoiceEngine(
         var last: Exception? = null
         for (p in plan) {
             try {
-                p.speak(text, request.emphasis, request.onFirstAudio)
+                p.speak(text, request.emphasis, request.onFirstAudio, request.korean)
                 lastProvider = p.name
                 return
             } catch (e: CancellationException) {

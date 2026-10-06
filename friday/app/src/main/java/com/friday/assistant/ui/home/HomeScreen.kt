@@ -52,13 +52,14 @@ fun HomeScreen(vm: HomeViewModel, onNeedMic: (then: () -> Unit) -> Unit, onAmbie
     val mic by vm.micLevel.collectAsStateWithLifecycle()
     val amp by vm.amplitude.collectAsStateWithLifecycle()
     val card by vm.card.collectAsStateWithLifecycle()
+    val korean by vm.koreanVoice.collectAsStateWithLifecycle()
     val ctx by vm.contextSize.collectAsStateWithLifecycle()
     HomeContent(
         core = core, user = if (core == CoreState.LISTENING && partial.isNotBlank()) partial else sub.user,
         subtitle = sub.subtitle, background = service, wakeWord = settings.wakeWord,
         level = { if (core == CoreState.LISTENING) mic else amp },
         onMic = { onNeedMic { vm.listen() } }, onStop = vm::stop,
-        card = card, subtitleScale = settings.subtitleScale, contextLevel = ctx / 4f, onAmbient = onAmbient,
+        koreanVoice = korean, card = card, subtitleScale = settings.subtitleScale, contextLevel = ctx / 4f, onAmbient = onAmbient,
     )
 }
 
@@ -66,7 +67,7 @@ fun HomeScreen(vm: HomeViewModel, onNeedMic: (then: () -> Unit) -> Unit, onAmbie
 fun HomeContent(
     core: CoreState, user: String, subtitle: String, background: Boolean, wakeWord: String,
     level: () -> Float, onMic: () -> Unit, onStop: () -> Unit,
-    card: InfoCard? = null, subtitleScale: Float = 1f, contextLevel: Float = 0f, onAmbient: () -> Unit = {},
+    koreanVoice: Boolean = false, card: InfoCard? = null, subtitleScale: Float = 1f, contextLevel: Float = 0f, onAmbient: () -> Unit = {},
 ) {
     val e = LocalEnergy.current
     val active = core != CoreState.IDLE && core != CoreState.OFFLINE
@@ -84,7 +85,7 @@ fun HomeContent(
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             FridayCore(core, level, Modifier.fillMaxWidth(0.82f), contextLevel)
         }
-        HudLabel(stateLabel(core, wakeWord), color = if (core == CoreState.ERROR) FridayColors.Error else e.secondary)
+        HudLabel(stateLabel(core, wakeWord) + if (koreanVoice) " · 한국어 음성" else "", color = if (core == CoreState.ERROR) FridayColors.Error else e.secondary)
         InfoCardPanel(card, Modifier.padding(bottom = 8.dp))
         Spacer(Modifier.height(4.dp))
         GlassPanel(Modifier.fillMaxWidth().height(132.dp)) {

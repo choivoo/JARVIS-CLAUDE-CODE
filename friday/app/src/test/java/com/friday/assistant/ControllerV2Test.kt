@@ -223,7 +223,7 @@ class ControllerV2Test {
         val server = FakeAi(AiException.Server(503))
         val r1 = rig(FakeStt(SttResult.Text("질문")), server)
         r1.c.startListening(); advanceUntilIdle()
-        assertEquals("one retry, never an endless loop", 2, server.prompts.size)
+        assertEquals("two retries for 5xx, never an endless loop", 3, server.prompts.size)
         assertTrue(r1.speaker.spoken.single().contains("problem"))
 
         val badKey = FakeAi(AiException.InvalidKey())
@@ -357,5 +357,47 @@ class ControllerV2Test {
         r.c.startListening(); advanceUntilIdle()
         assertEquals("I can't do that yet.", r.speaker.spoken.single())
         assertTrue(risky.calls.isEmpty())
+    }
+
+    // ---- Korean voice mode ----------------------------------------------------------------------------------
+
+    @Test fun askingForKoreanSwitchesTheVoiceUntilToldOtherwise() = runTest {
+        val ai = FakeAi(json("It is sunny.", "맑습니다."), json("It is cloudy.", "흐립니다."))
+        val r = rig(
+            FakeStt(SttResult.Text("한국어로 말해줘"), SttResult.Text("날씨 어때"), SttResult.Text("영어로 말해줘"), SttResult.Text("날씨 어때")),
+            ai, settings = FridaySettings(followUpEnabled = true),
+        )
+        r.c.startListening(); advanceUntilIdle()
+        assertEquals("알겠습니다. 이제 한국어로 말할게요.", r.speaker.spoken[0])
+        assertEquals("while in Korean mode the voice reads the Korean text", "맑습니다.", r.speaker.spoken[1])
+        assertEquals("the confirmation already uses the new language", "Okay, I'll speak English again.", r.speaker.spoken[2])
+        assertEquals("back to English", "It is cloudy.", r.speaker.spoken[3])
+        assertEquals(listOf(true, true, false, false), r.speaker.koreanRequests)
+        assertFalse(r.c.koreanVoice.value)
+        assertEquals("the mode switches never reached the AI", 2, ai.prompts.size)
+    }
+
+    @Test fun koreanOnlyForThisOneRequest() = runTest {
+        val ai = FakeAi(json("It is sunny.", "맑습니다."), json("It is cloudy.", "흐립니다."))
+        val r = rig(FakeStt(SttResult.Text("오늘 날씨 한국어로 알려줘"), SttResult.Text("내일 날씨")), ai)
+        r.c.startListening(); advanceUntilIdle()
+        assertEquals(listOf("맑습니다.", "It is cloudy."), r.speaker.spoken)
+        assertEquals("the AI never sees the language words", "오늘 날씨 알려줘", ai.prompts[0].last { it.role == com.friday.assistant.ai.Role.USER }.content)
+        assertFalse("one-off, not a mode", r.c.koreanVoice.value)
+    }
+
+    @Test fun localCommandsAlsoSpeakKoreanInKoreanMode() = runTest {
+        val time = RecordingExecutor { _, _ -> CommandResult.ok("It's 12:00 PM.", "정오입니다.") }
+        val r = rig(FakeStt(SttResult.Text("앞으로 한국어로 대답해"), SttResult.Text("지금 몇 시야")), FakeAi(json("x", "y")), routerWith(CommandType.GET_TIME to time))
+        r.c.startListening(); advanceUntilIdle()
+        assertEquals("정오입니다.", r.speaker.spoken.last())
+    }
+
+    @Test fun anAiErrorShowsHttpCodeAndIsSpokenInKoreanWhenAsked() = runTest {
+        val r = rig(FakeStt(SttResult.Text("한국어로 말해줘"), SttResult.Text("농담해줘")), FakeAi(AiException.Server(503, "overloaded")))
+        r.c.startListening(); advanceUntilIdle()
+        assertTrue(r.subs.any { it.subtitle.contains("HTTP 503") })
+        assertEquals(true, r.speaker.koreanRequests.last())
+        assertTrue(r.speaker.spoken.last().contains("AI 서비스"))
     }
 }

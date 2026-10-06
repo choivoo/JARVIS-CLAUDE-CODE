@@ -44,6 +44,8 @@ data class FridaySettings(
     val proactiveUpcomingEvent: Boolean = false,
     val proactiveWeather: Boolean = false,
     val ambientMode: Boolean = false,
+    /** Show subtitles on top of other apps while FRIDAY is in the background (needs "Display over other apps"). */
+    val overlaySubtitles: Boolean = true,
 
     val sttEngine: String = "android",
     val wakeWord: String = "FRIDAY",

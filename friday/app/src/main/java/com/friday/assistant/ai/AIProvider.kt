@@ -11,7 +11,7 @@ sealed class AiException(message: String) : Exception(message) {
     class InvalidKey : AiException("Invalid API key")
     class RateLimited : AiException("Rate limit reached")
     class Timeout : AiException("The AI request timed out")
-    class Server(val code: Int) : AiException("AI server error $code")
+    class Server(val code: Int, val detail: String = "") : AiException("AI server error $code" + if (detail.isNotBlank()) ": $detail" else "")
     class BadResponse(message: String) : AiException(message)
 }
 

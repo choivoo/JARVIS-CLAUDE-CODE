@@ -13,6 +13,7 @@ import com.friday.assistant.command.CommandRouter
 import com.friday.assistant.command.CommandType
 import com.friday.assistant.command.FollowUpResolver
 import com.friday.assistant.command.InfoCard
+import com.friday.assistant.command.LanguageIntent
 import com.friday.assistant.command.LocalIntentParser
 import com.friday.assistant.command.ResultStatus
 import com.friday.assistant.data.ConversationRepository
@@ -21,6 +22,7 @@ import com.friday.assistant.stt.SpeechRecognizerEngine
 import com.friday.assistant.stt.SttResult
 import com.friday.assistant.voice.Emphasis
 import com.friday.assistant.voice.Speaker
+import com.friday.assistant.voice.SpeechChunk
 import com.friday.assistant.voice.SpeechRequest
 import com.friday.assistant.voice.SubtitleSynchronizer
 import com.friday.assistant.wake.WakeWordMatcher
@@ -73,6 +75,10 @@ class FridayController(
     val amplitude: StateFlow<Float> get() = speaker.amplitude
 
     private val tracker = LatencyTracker(clockMs)
+    private val _korean = MutableStateFlow(false)
+    /** True while FRIDAY has been asked to speak Korean (until "영어로 말해줘" or app restart). */
+    val koreanVoice: StateFlow<Boolean> = _korean.asStateFlow()
+    private var koreanOnce = false
     private var job: Job? = null
     private var subtitleJob: Job? = null
     private var cardJob: Job? = null
@@ -162,6 +168,13 @@ class FridayController(
 
         if (isStopPhrase(text)) { stop(); return }
 
+        when (val lang = LanguageIntent.parse(text)) {
+            LanguageIntent.SwitchToKorean -> { _korean.value = true; reply(Spoken("Okay, I'll speak Korean from now on.", "알겠습니다. 이제 한국어로 말할게요.")); return }
+            LanguageIntent.SwitchToEnglish -> { _korean.value = false; reply(Spoken("Okay, I'll speak English again.", "알겠습니다. 다시 영어로 말할게요.")); return }
+            is LanguageIntent.KoreanOnce -> { koreanOnce = true; process(lang.request); return }
+            null -> Unit
+        }
+
         FollowUpResolver.resolve(text, contextEngine)?.let { reply(it); return }
 
         LocalIntentParser.parse(text, now())?.let { cmd ->
@@ -203,7 +216,7 @@ class FridayController(
     /** One AI call with a timeout; a second attempt only for timeouts and server errors, never for key/rate-limit problems. */
     private suspend fun complete(provider: AIProvider, messages: List<ChatMessage>): String {
         var last: Exception? = null
-        repeat(2) { attempt ->
+        repeat(3) { attempt ->
             val t0 = clockMs()
             try {
                 val out = withTimeoutOrNull(aiTimeoutMs) { provider.complete(messages) } ?: throw AiException.Timeout()
@@ -214,9 +227,10 @@ class FridayController(
             } catch (e: Exception) {
                 tracker.aiFinished(clockMs() - t0)
                 last = e
-                val retryable = e is AiException.Timeout || (e is AiException.Server && e.code >= 500)
-                if (!retryable || attempt == 1) throw e
-                delay(aiRetryDelayMs)
+                // Transient failures only, and bounded: timeouts get one retry, server-side 5xx get two.
+                val maxAttempts = if (e is AiException.Server && e.code >= 500) 3 else if (e is AiException.Timeout) 2 else 1
+                if (attempt + 1 >= maxAttempts) throw e
+                delay(aiRetryDelayMs * (attempt + 1))
             }
         }
         throw last ?: AiException.BadResponse("no response")
@@ -278,7 +292,10 @@ class FridayController(
         subtitleJob?.cancel()
         val s = settings()
         val user = _subtitle.value.user
-        val chunks = SubtitleSynchronizer.split(line.speech, line.subtitle)
+        val korean = _korean.value || koreanOnce
+        koreanOnce = false
+        // In Korean mode the voice reads the Korean text, so the subtitle and the voice say the same thing.
+        val chunks = SubtitleSynchronizer.split(line.speech, line.subtitle).map { if (korean && it.subtitle.isNotBlank()) SpeechChunk(it.subtitle, it.subtitle) else it }
         _core.value = CoreState.SPEAKING
         _subtitle.value = SubtitleState(user, chunks.firstOrNull()?.subtitle ?: line.subtitle, speaking = s.voiceFeedback)
         tracker.ttsRequested()
@@ -286,7 +303,7 @@ class FridayController(
             if (s.voiceFeedback) {
                 speaker.speak(
                     SpeechRequest(
-                        chunks, emphasis,
+                        chunks, emphasis, korean = korean,
                         onChunkStart = { i -> _subtitle.value = SubtitleState(user, chunks[i].subtitle, speaking = true) },
                         onFirstAudio = { tracker.firstAudio(); _latency.value = tracker.last },
                     ),
@@ -315,7 +332,9 @@ class FridayController(
         _subtitle.value = SubtitleState(subtitle = line.subtitle)
         if (speak && settings().voiceFeedback) {
             try {
-                speaker.speak(SpeechRequest(SubtitleSynchronizer.split(line.speech, line.subtitle), Emphasis.WARNING))
+                val ko = _korean.value
+                val chunks = SubtitleSynchronizer.split(line.speech, line.subtitle).map { if (ko && it.subtitle.isNotBlank()) SpeechChunk(it.subtitle, it.subtitle) else it }
+                speaker.speak(SpeechRequest(chunks, Emphasis.WARNING, korean = ko))
             } catch (e: CancellationException) { throw e } catch (e: Exception) { /* subtitle already shown */ }
         } else delay(readTimeMs(line.subtitle))
         _subtitle.value = SubtitleState()

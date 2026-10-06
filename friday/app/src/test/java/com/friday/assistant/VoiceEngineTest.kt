@@ -44,7 +44,9 @@ class FakeTts(override val name: String, private val failWith: Exception? = null
     private val _amp = MutableStateFlow(0f)
     override val amplitude: StateFlow<Float> = _amp
     fun setAmp(v: Float) { _amp.value = v }
-    override suspend fun speak(text: String, emphasis: Emphasis, onFirstAudio: () -> Unit) {
+    val koreanFlags = mutableListOf<Boolean>()
+    override suspend fun speak(text: String, emphasis: Emphasis, onFirstAudio: () -> Unit, korean: Boolean) {
+        koreanFlags += korean
         failWith?.let { throw it }
         said += text; emphases += emphasis
         onFirstAudio()
@@ -229,5 +231,11 @@ class VoiceEngineTest {
         assertEquals(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT, shadow.lastAudioFocusRequest!!.audioFocusRequest.focusGain)
         m.release()
         assertTrue("OFF never touches audio focus", AudioFocusManager(ctx).acquire(AudioFocusMode.OFF))
+    }
+
+    @Test fun koreanFlagReachesTheProvider() = runTest {
+        val a = FakeTts("A")
+        engine(a = a).speak(SpeechRequest(listOf(SpeechChunk("안녕하세요.", "안녕하세요.")), korean = true))
+        assertEquals(listOf(true), a.koreanFlags)
     }
 }

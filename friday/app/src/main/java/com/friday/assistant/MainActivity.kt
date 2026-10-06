@@ -69,12 +69,14 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         container.appInForeground = true
+        container.overlay.refresh()
         val s = container.settingsRepo.current
         if (s.backgroundAssistant && Permissions.mic(this) && !container.serviceRunning.value) FridayService.start(this)
     }
 
     override fun onStop() {
         container.appInForeground = false
+        container.overlay.refresh()
         super.onStop()
     }
 }

@@ -49,6 +49,7 @@ class FakeSpeaker : Speaker {
     /** One entry per speak() call: the English sentences joined. */
     val spoken = mutableListOf<String>()
     val emphases = mutableListOf<com.friday.assistant.voice.Emphasis>()
+    val koreanRequests = mutableListOf<Boolean>()
     var gate: CompletableDeferred<Unit>? = null
     var stops = 0
     override val amplitude: StateFlow<Float> = MutableStateFlow(0f)
@@ -57,6 +58,7 @@ class FakeSpeaker : Speaker {
         val text = request.chunks.joinToString(" ") { it.speech }
         spoken += text
         emphases += request.emphasis
+        koreanRequests += request.korean
         currentSpeech = text
         try {
             request.chunks.forEachIndexed { i, _ ->

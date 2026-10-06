@@ -57,6 +57,8 @@ import com.friday.assistant.proactive.ProactiveEngine
 import com.friday.assistant.proactive.UpcomingEventSource
 import com.friday.assistant.proactive.WeatherWarningSource
 import com.friday.assistant.weather.WeatherReport
+import com.friday.assistant.overlay.SubtitleOverlay
+import kotlinx.coroutines.launch
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.provider.CalendarContract
@@ -166,6 +168,14 @@ class AppContainer(
         )
     }
 
+    val overlay = SubtitleOverlay(context, { settingsRepo.current }, { appInForeground })
+
+    /** Mirrors the subtitle onto the overlay and re-checks it when settings change. Called once from the Application. */
+    fun startOverlay() {
+        scope.launch { controller.subtitle.collect { overlay.update(it.subtitle) } }
+        scope.launch { settingsRepo.settings.collect { overlay.refresh() } }
+    }
+
     val permissionSnapshot get() = PermissionCenter.snapshot(context)
 
     fun aiProvider(): AIProvider {
@@ -198,5 +208,6 @@ class FridayApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        container.startOverlay()
     }
 }

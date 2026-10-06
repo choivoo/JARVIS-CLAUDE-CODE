@@ -29,6 +29,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     val amplitude get() = c.controller.amplitude
     val settings: StateFlow<FridaySettings> get() = c.settingsRepo.settings
     val card get() = c.controller.card
+    val koreanVoice get() = c.controller.koreanVoice
     val contextSize get() = c.controller.contextSize
     val serviceRunning get() = c.serviceRunning
     val online get() = c.network.online

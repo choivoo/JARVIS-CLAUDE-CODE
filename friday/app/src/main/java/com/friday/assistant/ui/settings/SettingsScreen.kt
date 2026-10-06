@@ -145,6 +145,11 @@ fun SettingsContent(
         SectionTitle("Subtitles")
         LabeledSlider("Subtitle Duration ${"%.1f".format(s.subtitleDurationMs / 1000f)} s", s.subtitleDurationMs / 1000f, 1f..8f) { v -> update { it.copy(subtitleDurationMs = (v * 1000).toInt()) } }
         LabeledSlider("Subtitle Size ${"%.1f".format(s.subtitleScale)}×", s.subtitleScale, 0.8f..1.8f) { v -> update { it.copy(subtitleScale = v) } }
+        SwitchRow("Subtitle Overlay", "Show subtitles on top of other apps while FRIDAY is in the background (needs \"Display over other apps\")", s.overlaySubtitles) { v ->
+            update { it.copy(overlaySubtitles = v) }
+            val overlay = perms.firstOrNull { it.id == "overlay" }
+            if (v && overlay != null && overlay.status != PermStatus.GRANTED) actions.openSettings(overlay)
+        }
         SwitchRow("Always Show Subtitle", "Keep the last subtitle until the next conversation", s.alwaysShowSubtitle) { v -> update { it.copy(alwaysShowSubtitle = v) } }
 
         SectionTitle("Listening")

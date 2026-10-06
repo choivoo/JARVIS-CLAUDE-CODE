@@ -85,7 +85,7 @@ abstract class PcmHttpTts(protected val client: OkHttpClient = Http.client) : TT
 
     protected abstract fun request(text: String, emphasis: Emphasis): Request
 
-    override suspend fun speak(text: String, emphasis: Emphasis, onFirstAudio: () -> Unit) {
+    override suspend fun speak(text: String, emphasis: Emphasis, onFirstAudio: () -> Unit, korean: Boolean) {
         val call = client.newCall(request(text, emphasis))
         val resp = withContext(Dispatchers.IO) {
             try { call.execute() } catch (e: java.io.IOException) { throw TtsException("TTS network error") }

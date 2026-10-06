@@ -16,7 +16,14 @@ object Errors {
         is AiException.InvalidKey -> Spoken("The API key was rejected. Please check it in Settings.", "API 키가 올바르지 않습니다. 설정에서 확인해 주세요.")
         is AiException.RateLimited -> Spoken("The AI service is rate limited. Please try again shortly.", "AI 서비스 요청 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.")
         is AiException.Timeout -> Spoken("The AI service took too long to answer.", "AI 응답이 너무 오래 걸립니다.")
-        is AiException.Server -> Spoken("The AI service had a problem. Please try again.", "AI 서비스에 문제가 발생했습니다. 다시 시도해 주세요.")
+        is AiException.Server -> Spoken(
+            "The AI service had a problem. Please try again.",
+            when (e.code) {
+                404 -> "AI 모델을 찾을 수 없습니다 (HTTP 404). 설정의 AI Model 이름을 확인해 주세요."
+                400 -> "AI가 요청을 거부했습니다 (HTTP 400)${e.detail.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""}"
+                else -> "AI 서비스에 문제가 발생했습니다 (HTTP ${e.code}). 잠시 후 다시 시도해 주세요."
+            },
+        )
         is AiException.BadResponse -> Spoken("I got an unreadable answer from the AI.", "AI의 응답을 해석할 수 없습니다.")
         else -> Spoken("Something went wrong while thinking.", "처리 중 오류가 발생했습니다.")
     }

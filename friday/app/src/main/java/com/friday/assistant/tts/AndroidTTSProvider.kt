@@ -37,11 +37,17 @@ class AndroidTTSProvider(
         return tts!!
     }
 
-    override suspend fun speak(text: String, emphasis: Emphasis, onFirstAudio: () -> Unit) {
+    override suspend fun speak(text: String, emphasis: Emphasis, onFirstAudio: () -> Unit, korean: Boolean) {
         val s = settings()
         val engine = engine()
-        engine.language = Locale.US
-        pickVoice(engine, s.androidVoice)?.let { engine.voice = it }
+        if (korean) {
+            val r = engine.setLanguage(Locale.KOREAN)
+            if (r == TextToSpeech.LANG_MISSING_DATA || r == TextToSpeech.LANG_NOT_SUPPORTED) throw TtsException("Korean voice is not installed on this phone")
+            engine.voices.orEmpty().filter { it.locale.language == "ko" }.maxByOrNull { it.quality }?.let { engine.voice = it }
+        } else {
+            engine.language = Locale.US
+            pickVoice(engine, s.androidVoice)?.let { engine.voice = it }
+        }
         engine.setSpeechRate(s.ttsSpeed * VoiceProfile.FRIDAY.rateFactor(emphasis))
         engine.setPitch(s.ttsPitch * VoiceProfile.FRIDAY.pitchFactor(emphasis))
         val id = UUID.randomUUID().toString()

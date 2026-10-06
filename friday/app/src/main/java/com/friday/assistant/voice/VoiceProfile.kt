@@ -11,6 +11,8 @@ class SpeechRequest(
     val emphasis: Emphasis = Emphasis.NORMAL,
     val onChunkStart: (index: Int) -> Unit = {},
     val onFirstAudio: () -> Unit = {},
+    /** Chunks hold Korean text and must be spoken with a Korean voice. */
+    val korean: Boolean = false,
 )
 
 /**

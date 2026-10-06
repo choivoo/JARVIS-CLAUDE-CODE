@@ -78,7 +78,7 @@ object PermissionCenter {
             runtime("contacts", "Contacts", "Find people to call or message", Manifest.permission.READ_CONTACTS),
             runtime("phone", "Phone calls", "Place a call directly after you confirm", Manifest.permission.CALL_PHONE),
             PermItem(
-                "overlay", "Display over other apps", "Not used by FRIDAY V1 (background launches use a tap-to-open notification instead)",
+                "overlay", "Display over other apps", "Show FRIDAY's Korean subtitles on top of other apps while it is in the background",
                 if (s.overlay) PermStatus.GRANTED else PermStatus.SETTINGS_REQUIRED, PermKind.SPECIAL,
             ),
         )

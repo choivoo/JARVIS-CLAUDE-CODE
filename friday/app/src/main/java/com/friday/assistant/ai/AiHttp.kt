@@ -32,7 +32,7 @@ internal object AiHttp {
                     resp.code == 401 || resp.code == 403 -> throw AiException.InvalidKey()
                     resp.code == 429 -> throw AiException.RateLimited()
                     resp.code == 400 && text.contains("API key", ignoreCase = true) -> throw AiException.InvalidKey()
-                    else -> throw AiException.Server(resp.code)
+                    else -> throw AiException.Server(resp.code, errorDetail(text))
                 }
             }
         } catch (e: AiException) {
@@ -45,6 +45,12 @@ internal object AiHttp {
             throw AiException.NoInternet()
         }
     }
+
+    /** Provider error text (never contains the key); shortened so it fits on screen. */
+    fun errorDetail(body: String): String = try {
+        val e = org.json.JSONObject(body).opt("error")
+        (if (e is org.json.JSONObject) e.optString("message") else e?.toString()).orEmpty().replace(Regex("\\s+"), " ").take(140)
+    } catch (x: Exception) { "" }
 
     fun client(): OkHttpClient = Http.client
 }

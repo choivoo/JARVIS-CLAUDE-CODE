@@ -60,6 +60,7 @@ class SettingsRepository(private val prefs: SharedPreferences, private val secre
             proactiveUpcomingEvent = prefs.getBoolean("proactiveUpcomingEvent", d.proactiveUpcomingEvent),
             proactiveWeather = prefs.getBoolean("proactiveWeather", d.proactiveWeather),
             ambientMode = prefs.getBoolean("ambientMode", d.ambientMode),
+            overlaySubtitles = prefs.getBoolean("overlaySubtitles", d.overlaySubtitles),
             sttEngine = prefs.getString("sttEngine", d.sttEngine) ?: d.sttEngine,
             wakeWord = d.wakeWord,
             backgroundAssistant = prefs.getBoolean("backgroundAssistant", d.backgroundAssistant),
@@ -87,7 +88,7 @@ class SettingsRepository(private val prefs: SharedPreferences, private val secre
             .putFloat("subtitleScale", s.subtitleScale).putBoolean("alwaysShowSubtitle", s.alwaysShowSubtitle)
             .putBoolean("followUpEnabled", s.followUpEnabled).putInt("followUpTimeoutSec", s.followUpTimeoutSec)
             .putBoolean("proactiveLowBattery", s.proactiveLowBattery).putBoolean("proactiveUpcomingEvent", s.proactiveUpcomingEvent)
-            .putBoolean("proactiveWeather", s.proactiveWeather).putBoolean("ambientMode", s.ambientMode)
+            .putBoolean("proactiveWeather", s.proactiveWeather).putBoolean("ambientMode", s.ambientMode).putBoolean("overlaySubtitles", s.overlaySubtitles)
             .putString("sttEngine", s.sttEngine)
             .putBoolean("backgroundAssistant", s.backgroundAssistant)
             .putBoolean("autoListen", s.autoListen).putBoolean("voiceFeedback", s.voiceFeedback)
