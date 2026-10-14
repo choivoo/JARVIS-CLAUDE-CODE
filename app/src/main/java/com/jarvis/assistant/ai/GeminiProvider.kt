@@ -13,6 +13,21 @@ class GeminiProvider : AIProvider {
     override val type = AiProviderType.GEMINI
 
     override suspend fun complete(config: AiConfig, turns: List<ChatTurn>): String {
+        // Google retires model names from time to time (HTTP 404); fall through to current aliases.
+        val models = listOf(config.model) + FALLBACK_MODELS.filter { it != config.model }
+        var last: AiException? = null
+        for (model in models) {
+            try {
+                return completeWith(config.copy(model = model), turns)
+            } catch (e: AiException) {
+                last = e
+                if (e.kind != AiError.BAD_RESPONSE || !e.message.orEmpty().contains("HTTP 404")) throw e
+            }
+        }
+        throw last ?: AiException(AiError.BAD_RESPONSE, "No model available")
+    }
+
+    private suspend fun completeWith(config: AiConfig, turns: List<ChatTurn>): String {
         val key = config.apiKey?.trim().orEmpty()
         if (key.isEmpty()) throw AiException(AiError.NOT_CONFIGURED, "API key missing")
 
@@ -55,5 +70,9 @@ class GeminiProvider : AIProvider {
         } catch (e: JSONException) {
             throw AiException(AiError.BAD_RESPONSE, "Unexpected response shape")
         }
+    }
+
+    private companion object {
+        val FALLBACK_MODELS = listOf("gemini-flash-lite-latest", "gemini-2.5-flash-lite", "gemini-flash-latest", "gemini-2.5-flash")
     }
 }

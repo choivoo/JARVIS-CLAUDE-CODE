@@ -367,7 +367,7 @@ class JarvisController(
                 )
                 AiError.SERVER, AiError.BAD_RESPONSE -> AiReply(
                     "My AI core returned an error.",
-                    "AI 서버에서 오류가 발생했습니다.",
+                    "AI 서버에서 오류가 발생했습니다. (${e.message.orEmpty().take(120)})",
                 )
             }
         }
