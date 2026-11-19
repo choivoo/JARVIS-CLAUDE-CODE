@@ -12,6 +12,21 @@ class LocalIntentParserTest {
     private fun type(text: String) = LocalIntentParser.parse(text, now)?.action?.type
 
     @Test
+    fun spokenAlarmAndReminder() {
+        val alarm = LocalIntentParser.parse("오후 세 시 반에 깨워줘", now)?.action
+        assertEquals("SET_ALARM", alarm?.type)
+        assertEquals("15", alarm?.param("hour"))
+        assertEquals("30", alarm?.param("minutes"))
+        assertNull(LocalIntentParser.parse("24:30에 알람 맞춰줘", now)?.action)
+
+        val reminder = LocalIntentParser.parse("열 시 십오 분에 숙제 알림 설정해줘", now)?.action
+        assertEquals("REMINDER_SET", reminder?.type)
+        assertEquals("숙제", reminder?.param("text"))
+        assertEquals("10", reminder?.param("hour"))
+        assertEquals("15", reminder?.param("minutes"))
+    }
+
+    @Test
     fun deviceCommands() {
         assertEquals("GET_TIME", type("JARVIS, 지금 시간 알려줘"))
         assertEquals("GET_BATTERY", type("내 배터리 얼마나 남았어?"))

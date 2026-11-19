@@ -11,6 +11,22 @@ class KoreanTimeParserTest {
     private val noon = LocalTime.of(12, 0)
 
     @Test
+    fun spokenClockTimes() {
+        assertEquals(ParsedTime(7, 30), KoreanTimeParser.parse("오전 일곱 시 반에 깨워줘", noon))
+        assertEquals(ParsedTime(23, 45), KoreanTimeParser.parse("밤열한시 사십오분", noon))
+        assertEquals(ParsedTime(12, 10), KoreanTimeParser.parse("오후 열 두 시 십 분", noon))
+        assertNull(KoreanTimeParser.parse("한 시간 뒤", noon))
+    }
+
+    @Test
+    fun invalidTimesDoNotCreateAnAlarm() {
+        for (text in listOf("24:30", "123:45", "7:155", "123시", "오전 18시", "9시 123분", "일곱 시 육십 분")) {
+            assertNull(text, KoreanTimeParser.parse(text, noon))
+        }
+        assertEquals(ParsedTime(0, 0), KoreanTimeParser.parse("24:00", noon))
+    }
+
+    @Test
     fun morningAndAfternoon() {
         assertEquals(ParsedTime(8, 0), KoreanTimeParser.parse("내일 오전 8시에 알람 맞춰줘", noon))
         assertEquals(ParsedTime(15, 30), KoreanTimeParser.parse("오후 3시 30분", noon))

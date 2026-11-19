@@ -35,7 +35,7 @@ object LocalIntentParser {
         val t = text.replace(Regex("\\s+"), " ")
 
         // ---- v1.2 shortcuts ----
-        parseV12(t)?.let { return it }
+        parseV12(t, now)?.let { return it }
 
         // Timer ("10분 타이머", "30초 뒤에 알려줘")
         if (t.contains("타이머") || Regex("\\d+\\s*(?:분|초|시간)\\s*(?:뒤|후)에?\\s*(?:알려|깨워)").containsMatchIn(t)) {
@@ -194,7 +194,7 @@ object LocalIntentParser {
     private fun act(en: String, ko: String, type: String, vararg params: Pair<String, String>) = reply(en, ko, type, *params)
 
     /** Phrases for the v1.2 command set. Returns null when nothing matches. */
-    private fun parseV12(t: String): AiReply? {
+    private fun parseV12(t: String, now: LocalTime): AiReply? {
         fun has(r: String) = Regex(r, RegexOption.IGNORE_CASE).containsMatchIn(t)
 
         // holographic windows
@@ -291,9 +291,14 @@ object LocalIntentParser {
             return act("I'll remind you.", "알려드리겠습니다.", "REMINDER_SET", "text" to it.groupValues[3].trim(), key to n)
         }
         Regex("(.+?)\\s*(?:라고)?\\s*(?:알림|리마인드)\\s*(?:해|설정|맞춰)").find(t)?.let {
-            val time = KoreanTimeParser.parse(t)
-            val text = it.groupValues[1].replace(Regex("(오전|오후|내일|오늘)?\\s*\\d{1,2}\\s*시(\\s*\\d{1,2}\\s*분)?(\\s*반)?\\s*에?"), "").trim()
-            if (time != null && text.isNotEmpty()) {
+            val message = it.groupValues[1]
+            val clock = KoreanTimeParser.find(message, now)
+            if (clock != null) {
+                val before = message.substring(0, clock.range.first).trimEnd().removeSuffix("내일").removeSuffix("오늘")
+                val after = message.substring(clock.range.last + 1).trimStart().removePrefix("에")
+                val text = listOf(before.trim(), after.trim()).filter { part -> part.isNotEmpty() }.joinToString(" ")
+                if (text.isEmpty()) return@let
+                val time = clock.time
                 return act("I'll remind you.", "알려드리겠습니다.", "REMINDER_SET", "text" to text, "hour" to time.hour.toString(), "minutes" to time.minute.toString())
             }
         }

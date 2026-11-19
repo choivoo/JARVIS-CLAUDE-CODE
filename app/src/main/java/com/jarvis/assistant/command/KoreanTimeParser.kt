@@ -6,23 +6,43 @@ data class ParsedTime(val hour: Int, val minute: Int)
 
 /** Parses spoken Korean clock times such as "오후 3시 30분", "8시 반", "오전 7:15". */
 object KoreanTimeParser {
-    private val colon = Regex("(오전|오후|아침|저녁|밤|새벽|낮)?\\s*(\\d{1,2}):(\\d{2})")
-    private val korean = Regex("(오전|오후|아침|저녁|밤|새벽|낮)?\\s*(\\d{1,2})\\s*시\\s*(?:(\\d{1,2})\\s*분|(반))?")
+    private val spokenHours = listOf("한", "두", "세", "네", "다섯", "여섯", "일곱", "여덟", "아홉", "열", "열한", "열두")
+    private val hourWords = spokenHours.joinToString("|").replace("열한", """열\s*한""").replace("열두", """열\s*두""")
+    private const val periodWords = "오전|오후|아침|저녁|밤|새벽|낮"
+    private val clock = Regex(
+        """(?<!\d)($periodWords)?\s*(?:(\d{1,2}):(\d{2})(?!\d)|""" +
+            """(\d{1,2}|(?:(?<![가-힣])|(?<=$periodWords))(?:$hourWords))\s*시(?!간)""" +
+            """(?:\s*(\d+|[영공일이삼사오육칠팔구십백천]+)\s*분|\s*(반))?)"""
+    )
+    private const val digits = "영일이삼사오육칠팔구"
+    private val spokenMinutes = (0..59).associateBy { minute ->
+        val tens = minute / 10
+        val ones = minute % 10
+        when {
+            tens == 0 -> digits[ones].toString()
+            else -> (if (tens == 1) "" else digits[tens].toString()) + "십" +
+                (if (ones == 0) "" else digits[ones].toString())
+        }
+    }
 
-    fun parse(text: String, now: LocalTime = LocalTime.now()): ParsedTime? {
-        val m = colon.find(text)
-        val (period, hourRaw, minute) = if (m != null) {
-            Triple(m.groupValues[1], m.groupValues[2].toInt(), m.groupValues[3].toInt())
-        } else {
-            val k = korean.find(text) ?: return null
-            val min = when {
-                k.groupValues[4].isNotEmpty() -> 30
-                k.groupValues[3].isNotEmpty() -> k.groupValues[3].toInt()
-                else -> 0
-            }
-            Triple(k.groupValues[1], k.groupValues[2].toInt(), min)
+    data class ClockMatch(val time: ParsedTime, val range: IntRange)
+
+    fun parse(text: String, now: LocalTime = LocalTime.now()): ParsedTime? = find(text, now)?.time
+
+    fun find(text: String, now: LocalTime): ClockMatch? {
+        val match = clock.find(text) ?: return null
+        val (period, colonHour, colonMinute, koreanHour, koreanMinute, half) = match.destructured
+        val raw = colonHour.ifEmpty { koreanHour }.filterNot { it.isWhitespace() }
+        val hourRaw = raw.toIntOrNull() ?: (spokenHours.indexOf(raw) + 1)
+        val minute = when {
+            half.isNotEmpty() -> 30
+            colonMinute.isNotEmpty() -> colonMinute.toInt()
+            koreanMinute.isNotEmpty() -> koreanMinute.toIntOrNull() ?: spokenMinutes[koreanMinute] ?: return null
+            else -> 0
         }
         if (hourRaw !in 0..24 || minute !in 0..59) return null
+        if (period.isNotEmpty() && hourRaw !in 1..12) return null
+        if (hourRaw == 24 && minute != 0) return null
         val hour = hourRaw % 24
 
         val resolved = when (period) {
@@ -43,7 +63,7 @@ object KoreanTimeParser {
                 }
             }
         }
-        return ParsedTime(resolved, minute)
+        return ClockMatch(ParsedTime(resolved, minute), match.range)
     }
 
     fun speakEn(t: ParsedTime): String {
