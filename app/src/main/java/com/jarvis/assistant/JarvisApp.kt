@@ -187,6 +187,27 @@ class AppContainer(app: Application) {
         OpenAICompatibleProvider(AiProviderType.OPENROUTER),
     ).associateBy { it.type }
 
+    /** One tiny request to the selected provider, for the Settings "TEST AI" button. */
+    suspend fun testAi(): String {
+        val cfg = settings.aiConfig(settings.current().aiProvider)
+        val provider = aiProviders[cfg.provider] ?: return "Provider unavailable"
+        val start = System.currentTimeMillis()
+        return try {
+            kotlinx.coroutines.withTimeout(20_000) {
+                provider.complete(cfg, listOf(com.jarvis.assistant.ai.ChatTurn(com.jarvis.assistant.ai.ChatTurn.USER, "Reply with the JSON {\"speech\":\"ok\",\"subtitle\":\"ok\"}")))
+            }
+            "OK · ${cfg.provider.label} · ${cfg.model} · ${System.currentTimeMillis() - start} ms"
+        } catch (e: com.jarvis.assistant.ai.AiException) {
+            "FAILED (${e.kind}) · ${e.message.orEmpty().take(160)}"
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            "FAILED (TIMEOUT) · no answer within 20 s"
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            "FAILED · ${e.javaClass.simpleName}"
+        }
+    }
+
     // Commands
     private val launcher = ActivityLauncher(app, visibility)
     private val resolver = AppResolver(app)

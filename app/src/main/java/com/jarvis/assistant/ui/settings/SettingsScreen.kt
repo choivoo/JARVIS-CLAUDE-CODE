@@ -95,6 +95,7 @@ fun SettingsScreen(
     speaker: JarvisSpeaker,
     permissions: PermissionStatus,
     actions: PermissionActions,
+    onTestAi: suspend () -> String = { "" },
     proximityAvailable: Boolean = true,
     routines: List<RoutineEntity> = emptyList(),
     onSaveRoutine: (String, String) -> Unit = { _, _ -> },
@@ -105,6 +106,7 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     var keyVersion by remember { mutableIntStateOf(0) } // forces re-read of "has key" after save/remove
     var voices by remember { mutableStateOf<List<VoiceOption>>(emptyList()) }
+    var aiTestResult by remember { mutableStateOf<String?>(null) }
     var testMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(settings.maleVoiceOnly) { voices = speaker.listAndroidVoices(settings.maleVoiceOnly) }
@@ -158,7 +160,17 @@ fun SettingsScreen(
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = Color.Black),
                         ) { Text("GET A KEY", fontSize = 12.sp, letterSpacing = 1.sp) }
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    aiTestResult = "Testing…"
+                                    aiTestResult = onTestAi()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = Color.Black),
+                        ) { Text("TEST AI", fontSize = 12.sp, letterSpacing = 1.sp) }
                     }
+                    aiTestResult?.let { Text(it, color = colors.textDim, fontSize = 11.sp) }
                     SwitchRow(
                         "Auto-switch when a limit is hit",
                         "Add free keys for several providers (Gemini, Groq, Cerebras, OpenRouter). When one runs out, JARVIS continues with the next.",

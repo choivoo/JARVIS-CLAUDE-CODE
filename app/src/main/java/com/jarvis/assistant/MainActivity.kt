@@ -322,6 +322,7 @@ private fun JarvisRoot(container: AppContainer, settings: AppSettings) {
             speaker = container.speaker,
             permissions = status,
             actions = actions,
+            onTestAi = { container.testAi() },
             proximityAvailable = container.gestures.proximityAvailable,
             routines = routines,
             onSaveRoutine = { n, st -> scope.launch { container.routineRepo.save(n, st) } },
